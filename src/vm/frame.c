@@ -13,7 +13,7 @@ struct f_table
 {
   struct lock lock;                   /* Mutual exclusion. */
   struct bitmap *used_map;            /* Bitmap of free pages. */
-  struct frame *frame_list;           /* Bitmap of free pages. */
+  struct frame *frame_list;           /* Array of frames. */
 };
 
 struct frame
@@ -33,6 +33,7 @@ void init_frame_table()
   extern size_t user_pool_size;
 
   //initialize used_map and frame_list with size user_pages
+  lock_init (&frame_table.lock);
   frame_table.used_map = bitmap_create(user_pool_size);
   frame_table.frame_list = (struct frame *)malloc(sizeof(struct frame)*user_pool_size);
 
