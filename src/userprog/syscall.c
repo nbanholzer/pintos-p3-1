@@ -368,6 +368,23 @@ static int sys_close (int arg0, int arg1 UNUSED, int arg2 UNUSED)
   return 0;
 }
 
+// TODO: implement, remove UNUSED from locals
+static int sys_mmap (int arg0, int arg1, int arg2 UNUSED)
+{
+  UNUSED int fd = arg0;
+  UNUSED void *addr = (void*)arg1;
+
+  sys_exit(-1, 0, 0);
+  return 0;
+}
+
+static int sys_munmap (int arg0, int arg1 UNUSED, int arg2 UNUSED)
+{
+  UNUSED mapid_t fd = arg0;
+
+  sys_exit(-1, 0, 0);
+}
+
 // Syscall dispatch table
 typedef int syscall_func(int, int, int);
 struct syscall
@@ -380,7 +397,8 @@ static struct syscall syscall_array[] =
 {
   {0, sys_halt}, {1, sys_exit}, {1, sys_exec}, {1, sys_wait},
   {2, sys_create}, {1, sys_remove}, {1, sys_open}, {1, sys_filesize},
-  {3, sys_read}, {3, sys_write}, {2, sys_seek}, {1, sys_tell}, {1, sys_close}
+  {3, sys_read}, {3, sys_write}, {2, sys_seek}, {1, sys_tell}, {1, sys_close},
+  {2, sys_mmap}, {1, sys_munmap}
 };
 
 static void
