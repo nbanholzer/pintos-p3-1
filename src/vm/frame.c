@@ -8,6 +8,7 @@
 #include <string.h>
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "threads/malloc.h"
 
 struct f_table
 {

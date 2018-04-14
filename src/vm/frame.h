@@ -9,7 +9,7 @@ enum frame_flags
   FRAME_ZERO = 002
 };
 
-void init_frame_table();
+void init_frame_table(void);
 void *get_frame (enum frame_flags);
 void *get_frame_multiple(enum frame_flags, size_t frame_cnt);
 void free_frame (void *frame);
