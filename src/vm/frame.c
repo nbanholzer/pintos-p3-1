@@ -33,7 +33,7 @@ void init_frame_table()
   //Allocates user pool and stores page address in kpage
   //TODO are we guaranteed these are sequential?
   for (size_t i = 0; i < user_pages; i++) {
-    frame_table->frame_list->kpage = palloc_get_page(PAL_USER);
+    frame_table->frame_list[i]->kpage = palloc_get_page(PAL_USER);
   }
 }
 
@@ -50,17 +50,28 @@ void *get_frame_multiple(enum frame_flags flags, size_t frame_cnt)
   lock_acquire(frame_table->lock);
   frame_idx = bitmap_scan_and_flip (frame_table->used_map, 0, page_cnt, false);
   lock_release(frame_table->);
+  if (frame_idx == BITMAP_ERROR){
+    PANIC("No frames remaining");
+  }
 
   //would like to update the upage somehow?
+  //perhaps just in pagedir_set_page_etc
   return frame_table->frame_list[frame_idx]->kpage;
 }
 
 void free_frame(void *frame)
 {
-  palloc_free_page(frame);
+  free_frame_multiple(frame, 1);
 }
 
 void free_frame_multiple(void *frames, size_t frame_cnt)
 {
-  palloc_free_multiple(frames, frame_cnt);
+  frame_idx = pg_no (frames) - pg_no (frame_table->frame_list[0]->kpage);
+
+#ifndef NDEBUG
+  memset (frames, 0xcc, PGSIZE * page_cnt);
+#endif
+
+  ASSERT (bitmap_all (pool->used_map, page_idx, page_cnt));
+  bitmap_set_multiple (pool->used_map, page_idx, page_cnt, false);
 }
