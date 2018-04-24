@@ -29,8 +29,6 @@ void init_frame_table()
 {
   //To calculate number of user pages
   //Taken from palloc.c
-  //I'm worried about this peing incorrect because palloc puts the map
-  //in the pool, perhaps lowering this number
   extern size_t user_pool_size;
 
   //initialize used_map and frame_list with size user_pages
