@@ -45,7 +45,6 @@ process_execute (const char *args)
 
   /* Make a copy of ARGS.
      Otherwise there's a race between the caller and load(). */
-  //TODO: Should this still use palloc?
   args_copy = palloc_get_page (0);
   if (args_copy == NULL)
     return TID_ERROR;
@@ -78,7 +77,6 @@ process_execute (const char *args)
     }
   }
 
-//TODO: Also should this use palloc?
   palloc_free_page(p->name);
   if (tid == TID_ERROR)
     free(p);
@@ -499,7 +497,7 @@ setup_stack (void **esp, struct process *p)
 {
   uint8_t *kpage;
   bool success = false;
-
+  //TODO: Add to supplementary page table
   kpage = get_frame (FRAME_ZERO);
   if (kpage != NULL)
     {

@@ -12,11 +12,11 @@
 #include "threads/vaddr.h"
 #include "threads/malloc.h"
 
-*struct s_page_entry
-init_s_page_entry(uint8_t *u_addr, struct *file file, size_t read_bytes)
+struct s_page_entry*
+init_s_page_entry(uint8_t *u_addr, struct file *file, size_t read_bytes)
 {
-  //TODO should the asterisk be before or after s_page_entry?
-  struct *s_page_entry spe;
+  struct s_page_entry *spe;
+  //TODO:fix malloc size
   spe = (struct s_page_entry *)malloc(sizeof(struct frame)*user_pool_size);
   spe->addr = u_addr;
   spe->file = file;
