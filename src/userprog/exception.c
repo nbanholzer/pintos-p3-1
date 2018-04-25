@@ -176,6 +176,46 @@ page_fault (struct intr_frame *f)
 
   temp_spe.addr = fault_addr;
   e = hash_find(t->s_page_table, &temp_spe.hash_elem);
+  if (e != NULL) {
+    struct s_page_entry *spe = hash_entry(e ,struct s_page_entry, hash_elem);
 
+    if (spe->in_frame) {
+      PANIC ("page fault but frame should exist");
+    }
 
+    else if (spe->in_swap) {
+      //TODO: Swap code
+    }
+
+    else if (spe->in_file) {
+      /* Get a page of memory. */
+      uint8_t *kpage = get_frame (0, spe->addr);
+      if (kpage == NULL)
+        return false;
+
+      /* Load this page. */
+      file_seek (spe->file, spe->ofs);
+      if (file_read (spe->file, kpage, spe->read_bytes) != (int) spe->read_bytes)
+        {
+          free_frame (kpage);
+          return false;
+        }
+
+      size_t page_zero_bytes = PGSIZE - spe->read_bytes;
+      memset (kpage + spe->read_bytes, 0, page_zero_bytes);
+
+      /* Add the page to the process's address space. */
+      if (!(pagedir_get_page (t->pagedir, spe->addr) == NULL
+              && pagedir_set_page (t->pagedir, spe->addr, kpage, writable)))
+        {
+          free_frame (kpage);
+          return false;
+        }
+
+      //Update update s_page_entry
+      spe->in_frame = true;
+      spe->in_file = false;
+      spe->frame_addr = kpage;
+    }
+  }
 }

@@ -451,36 +451,19 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (ofs % PGSIZE == 0);
 
-  file_seek (file, ofs);
+  struct thread *t = thread_current ();
+  off_t new_ofs = ofs;
   while (read_bytes > 0 || zero_bytes > 0)
     {
       /* Calculate how to fill this page.
          We will read PAGE_READ_BYTES bytes from FILE
          and zero the final PAGE_ZERO_BYTES bytes. */
+
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
-      size_t page_zero_bytes = PGSIZE - page_read_bytes;
-
-      //TODO:Here we make and add a new page entry to the s_page_table
-      //TODO: Move next steps until "Advance" into the page fault handler
-      /* Get a page of memory. */
-      uint8_t *kpage = get_frame (0);
-      if (kpage == NULL)
-        return false;
-
-      /* Load this page. */
-      if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
-        {
-          free_frame (kpage);
-          return false;
-        }
-      memset (kpage + page_read_bytes, 0, page_zero_bytes);
-
-      /* Add the page to the process's address space. */
-      if (!install_page (upage, kpage, writable))
-        {
-          free_frame (kpage);
-          return false;
-        }
+      struct s_page_entry * spage = init_s_page_entry(upage, file, new_ofs, page_read_bytes);
+      //we could check the return address of hash_insert for success
+      hash_insert (t->s_page_table, spage->hash_elem);
+      new_ofs = ofs + page_read_bytes;
 
       /* Advance. */
       read_bytes -= page_read_bytes;
@@ -497,14 +480,19 @@ setup_stack (void **esp, struct process *p)
 {
   uint8_t *kpage;
   bool success = false;
-  //TODO: Add to supplementary page table
-  kpage = get_frame (FRAME_ZERO);
+  kpage = get_frame (FRAME_ZERO, (uint8_t *) PHYS_BASE) - PGSIZE);
   if (kpage != NULL)
     {
       // kpage/upage point to the bottom (address-wise) of the page
-      success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
+      uint8_t *upage = (uint8_t *) PHYS_BASE) - PGSIZE
+      success = install_page (upage, kpage, true);
       if (success)
       {
+        //Add to supplementary page table
+        struct thread *t = thread_current ();
+        struct s_page_entry * spage = init_stack_entry(upage, kpage);
+        hash_insert (t->s_page_table, spage->hash_elem);
+
         // Get address of bottom of page, then word align it
         char *stack = (char*)ROUND_DOWN((int)kpage + PGSIZE, sizeof(char*));
         char *stack_bottom = (char*)(kpage + PGSIZE);

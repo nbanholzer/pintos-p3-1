@@ -10,8 +10,8 @@ enum frame_flags
 };
 
 void init_frame_table(void);
-void *get_frame (enum frame_flags);
-void *get_frame_multiple(enum frame_flags, size_t frame_cnt);
+void *get_frame (enum frame_flags, void* upage);
+void *get_frame_multiple(enum frame_flags, size_t frame_cnt, void* upage);
 void free_frame (void *frame);
 void free_frame_multiple(void *frames, size_t frame_cnt);
 
