@@ -15,18 +15,18 @@ struct s_page_entry
   bool in_swap;
   bool in_file;
   uint8_t *frame_addr;
-  struct *file file;
+  struct file *file;
   off_t ofs;
   size_t read_bytes;
 };
 
-struct s_page_entry* init_s_page_entry(uint8_t *u_addr, struct *file file, off_t ofs, size_t read_bytes);
+struct s_page_entry* init_s_page_entry(uint8_t *u_addr, struct file *file, off_t ofs, size_t read_bytes);
 
 struct s_page_entry* init_stack_entry(uint8_t *u_addr, uint8_t *frame_addr);
 
 unsigned page_hash(const struct hash_elem *p_, void *aux UNUSED);
 
-bool page_less (const struct hash_elem *a_, const struct hash_elem *b_, void aux* UNUSED);
+bool page_less (const struct hash_elem *a_, const struct hash_elem *b_, void *aux UNUSED);
 
 //TODO: Deallocate s_page_entry function
 

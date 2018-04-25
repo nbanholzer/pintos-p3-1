@@ -462,12 +462,11 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       struct s_page_entry * spage = init_s_page_entry(upage, file, new_ofs, page_read_bytes);
       //we could check the return address of hash_insert for success
-      hash_insert (t->s_page_table, spage->hash_elem);
+      hash_insert (t->s_page_table, &spage->hash_elem);
       new_ofs = ofs + page_read_bytes;
 
       /* Advance. */
       read_bytes -= page_read_bytes;
-      zero_bytes -= page_zero_bytes;
       upage += PGSIZE;
     }
   return true;
@@ -480,18 +479,18 @@ setup_stack (void **esp, struct process *p)
 {
   uint8_t *kpage;
   bool success = false;
-  kpage = get_frame (FRAME_ZERO, (uint8_t *) PHYS_BASE) - PGSIZE);
+  kpage = get_frame (FRAME_ZERO, ((uint8_t *) PHYS_BASE) - PGSIZE);
   if (kpage != NULL)
     {
       // kpage/upage point to the bottom (address-wise) of the page
-      uint8_t *upage = (uint8_t *) PHYS_BASE) - PGSIZE
+      uint8_t *upage = ((uint8_t *) PHYS_BASE) - PGSIZE;
       success = install_page (upage, kpage, true);
       if (success)
       {
         //Add to supplementary page table
         struct thread *t = thread_current ();
         struct s_page_entry * spage = init_stack_entry(upage, kpage);
-        hash_insert (t->s_page_table, spage->hash_elem);
+        hash_insert (t->s_page_table, &spage->hash_elem);
 
         // Get address of bottom of page, then word align it
         char *stack = (char*)ROUND_DOWN((int)kpage + PGSIZE, sizeof(char*));
