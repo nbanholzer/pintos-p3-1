@@ -194,8 +194,6 @@ page_fault (struct intr_frame *f)
     else if (spe->in_file) {
       /* Get a page of memory. */
       uint8_t *kpage = get_frame (0, spe->addr);
-      if (kpage == NULL)
-        return false;
 
       /* Load this page. */
       file_seek (spe->file, spe->ofs);
