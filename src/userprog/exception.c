@@ -8,6 +8,9 @@
 #include "lib/kernel/hash.h"
 #include "vm/page.h"
 #include "threads/vaddr.h"
+#include "vm/frame.h"
+#include <string.h>
+#include "userprog/pagedir.h"
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -199,7 +202,6 @@ page_fault (struct intr_frame *f)
       if (file_read (spe->file, kpage, spe->read_bytes) != (int) spe->read_bytes)
         {
           free_frame (kpage);
-          return false;
         }
 
       size_t page_zero_bytes = PGSIZE - spe->read_bytes;
@@ -210,7 +212,6 @@ page_fault (struct intr_frame *f)
               && pagedir_set_page (t->pagedir, spe->addr, kpage, spe->writable)))
         {
           free_frame (kpage);
-          return false;
         }
 
       //Update update s_page_entry
