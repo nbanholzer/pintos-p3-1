@@ -7,6 +7,7 @@
 #include "threads/thread.h"
 #include "lib/kernel/hash.h"
 #include "vm/page.h"
+#include "threads/vaddr.h"
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -206,7 +207,7 @@ page_fault (struct intr_frame *f)
 
       /* Add the page to the process's address space. */
       if (!(pagedir_get_page (t->pagedir, spe->addr) == NULL
-              && pagedir_set_page (t->pagedir, spe->addr, kpage, writable)))
+              && pagedir_set_page (t->pagedir, spe->addr, kpage, spe->writable)))
         {
           free_frame (kpage);
           return false;

@@ -460,7 +460,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
          and zero the final PAGE_ZERO_BYTES bytes. */
 
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
-      struct s_page_entry * spage = init_s_page_entry(upage, file, new_ofs, page_read_bytes);
+      struct s_page_entry * spage = init_s_page_entry(upage, file, new_ofs, page_read_bytes, writable);
       //we could check the return address of hash_insert for success
       hash_insert (t->s_page_table, &spage->hash_elem);
       new_ofs = ofs + page_read_bytes;

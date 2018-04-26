@@ -13,7 +13,7 @@
 #include "threads/malloc.h"
 
 struct s_page_entry*
-init_s_page_entry(uint8_t *u_addr, struct file *file, off_t ofs, size_t read_bytes)
+init_s_page_entry(uint8_t *u_addr, struct file *file, off_t ofs, size_t read_bytes, bool writable)
 {
   struct s_page_entry *spe;
   spe = (struct s_page_entry *)malloc(sizeof(struct s_page_entry);
@@ -24,6 +24,7 @@ init_s_page_entry(uint8_t *u_addr, struct file *file, off_t ofs, size_t read_byt
   spe->in_frame = false;
   spe->in_swap = false;
   spe->in_file = true;
+  spe->writable = writable;
   return spte;
 }
 
@@ -37,6 +38,7 @@ init_stack_entry(uint8_t *u_addr, uint8_t *frame_addr)
   spe->in_frame = true;
   spe->in_swap = false;
   spe->in_file = false;
+  spe->writable = true;
   return spte;
 }
 
