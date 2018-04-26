@@ -11,12 +11,13 @@
 #include "threads/synch.h"
 #include "threads/vaddr.h"
 #include "threads/malloc.h"
+#include <debug.h>
 
 struct s_page_entry*
 init_s_page_entry(uint8_t *u_addr, struct file *file, off_t ofs, size_t read_bytes, bool writable)
 {
   struct s_page_entry *spe;
-  spe = (struct s_page_entry *)malloc(sizeof(struct s_page_entry);
+  spe = (struct s_page_entry *)malloc(sizeof(struct s_page_entry));
   spe->addr = u_addr;
   spe->file = file;
   spe->ofs = ofs;
@@ -25,33 +26,33 @@ init_s_page_entry(uint8_t *u_addr, struct file *file, off_t ofs, size_t read_byt
   spe->in_swap = false;
   spe->in_file = true;
   spe->writable = writable;
-  return spte;
+  return spe;
 }
 
 struct s_page_entry*
 init_stack_entry(uint8_t *u_addr, uint8_t *frame_addr)
 {
   struct s_page_entry *spe;
-  spe = (struct s_page_entry *)malloc(sizeof(struct s_page_entry);
+  spe = (struct s_page_entry *)malloc(sizeof(struct s_page_entry));
   spe->addr = u_addr;
   spe->frame_addr = frame_addr;
   spe->in_frame = true;
   spe->in_swap = false;
   spe->in_file = false;
   spe->writable = true;
-  return spte;
+  return spe;
 }
 
 unsigned
-page_hash(const struct hash_elem *p_, void *aux UNUSED)
+page_hash(const struct hash_elem *p_, void *aux)
 {
   const struct s_page_entry *spe = hash_entry(p_, struct s_page_entry, hash_elem);
   //TODO: Can we switch this sizeof to 8bytes since addresses are always the same size?
-  return hash_bytes(&spe->addr, sizeof(p->addr));
+  return hash_bytes(&spe->addr, sizeof(spe->addr));
 }
 
 bool
-page_less(const struct hash_elem *a_, const struct hash_elem *b_, void *aux UNUSED)
+page_less(const struct hash_elem *a_, const struct hash_elem *b_, void *aux)
 {
   const struct s_page_entry *a = hash_entry(a_, struct s_page_entry, hash_elem);
   const struct s_page_entry *b = hash_entry(b_, struct s_page_entry, hash_elem);
