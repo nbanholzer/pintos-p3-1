@@ -221,4 +221,9 @@ page_fault (struct intr_frame *f)
       spe->frame_addr = kpage;
     }
   }
+  // TODO: debug code, remove
+  else {
+    PANIC("Missing supplemental page table entry for virtual address %p", fault_addr);
+    kill(f);
+  }
 }
