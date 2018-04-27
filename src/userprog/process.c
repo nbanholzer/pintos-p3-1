@@ -453,7 +453,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 
   struct thread *t = thread_current ();
   off_t new_ofs = ofs;
-  while (read_bytes > 0 || zero_bytes > 0)
+  while (read_bytes > 0)
     {
       /* Calculate how to fill this page.
          We will read PAGE_READ_BYTES bytes from FILE
