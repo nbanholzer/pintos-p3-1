@@ -453,13 +453,14 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 
   struct thread *t = thread_current ();
   off_t new_ofs = ofs;
-  while (read_bytes > 0)
+  while (read_bytes > 0 || zero_bytes > 0)
     {
       /* Calculate how to fill this page.
          We will read PAGE_READ_BYTES bytes from FILE
          and zero the final PAGE_ZERO_BYTES bytes. */
 
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
+      size_t page_zero_bytes = PGSIZE - page_read_bytes;
       struct s_page_entry * spage = init_s_page_entry(upage, file, new_ofs, page_read_bytes, writable);
       //we could check the return address of hash_insert for success
       hash_insert (&t->s_page_table, &spage->hash_elem);
@@ -467,6 +468,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 
       /* Advance. */
       read_bytes -= page_read_bytes;
+      zero_bytes -= page_zero_bytes;
       upage += PGSIZE;
     }
   return true;
