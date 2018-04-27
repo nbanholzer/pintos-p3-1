@@ -97,7 +97,7 @@ struct thread
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
-    struct hash *s_page_table;
+    struct hash s_page_table;
     struct process *process;
     struct list active_child_processes;
     struct list file_descriptors;

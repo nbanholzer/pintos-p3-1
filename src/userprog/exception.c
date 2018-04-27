@@ -179,7 +179,7 @@ page_fault (struct intr_frame *f)
   struct hash_elem *e;
 
   temp_spe.addr = fault_addr;
-  e = hash_find(t->s_page_table, &temp_spe.hash_elem);
+  e = hash_find(&t->s_page_table, &temp_spe.hash_elem);
   if (e != NULL) {
     struct s_page_entry *spe = hash_entry(e ,struct s_page_entry, hash_elem);
 

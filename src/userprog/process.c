@@ -281,7 +281,7 @@ load (struct process *p, void (**eip) (void), void **esp)
   process_activate ();
 
   //supplementary page table
-  hash_init(t->s_page_table, page_hash, page_less, NULL);
+  hash_init(&t->s_page_table, page_hash, page_less, NULL);
 
   /* Open executable file. */
   file = filesys_open (p->name);
@@ -462,7 +462,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       struct s_page_entry * spage = init_s_page_entry(upage, file, new_ofs, page_read_bytes, writable);
       //we could check the return address of hash_insert for success
-      hash_insert (t->s_page_table, &spage->hash_elem);
+      hash_insert (&t->s_page_table, &spage->hash_elem);
       new_ofs = ofs + page_read_bytes;
 
       /* Advance. */
@@ -490,7 +490,7 @@ setup_stack (void **esp, struct process *p)
         //Add to supplementary page table
         struct thread *t = thread_current ();
         struct s_page_entry * spage = init_stack_entry(upage, kpage);
-        hash_insert (t->s_page_table, &spage->hash_elem);
+        hash_insert (&t->s_page_table, &spage->hash_elem);
 
         // Get address of bottom of page, then word align it
         char *stack = (char*)ROUND_DOWN((int)kpage + PGSIZE, sizeof(char*));
