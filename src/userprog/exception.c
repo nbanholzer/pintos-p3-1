@@ -155,24 +155,26 @@ page_fault (struct intr_frame *f)
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
 
-  /* To implement virtual memory, delete the rest of the function
-     body, and replace it with code that brings in the page to
-     which fault_addr refers. */
+  // TODO: remove this - keeping for debugging
   printf ("Page fault at %p: %s error %s page in %s context.\n",
           fault_addr,
           not_present ? "not present" : "rights violation",
           write ? "writing" : "reading",
           user ? "user" : "kernel");
-  if(user)
+
+  // Rights violations
+  if(!not_present)
   {
-    kill (f);
+    if(user)
+      kill(f);
+    else
+    {
+      f->eip = (void*)f->eax;
+      f->eax = 0xffffffff;
+      return;
+    }
   }
-  // Page faults in kernel shouldn't kill the thread - see manual p.27
-  else
-  {
-    f->eip = (void*)f->eax;
-    f->eax = 0xffffffff;
-  }
+
   //Virtual Memory Code
   struct thread *t = thread_current ();
   struct s_page_entry temp_spe;
