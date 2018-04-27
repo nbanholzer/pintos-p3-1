@@ -12,6 +12,10 @@
 #include "devices/input.h"
 #include "filesys/filesys.h"
 #include "filesys/file.h"
+#include "vm/page.h"
+#include "lib/kernel/hash.h"
+#include "lib/round.h"
+#include <string.h>
 
 static void syscall_handler (struct intr_frame *);
 
@@ -35,7 +39,7 @@ struct open_file
 };
 
 void
-syscall_init (void) 
+syscall_init (void)
 {
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
   lock_init(&filesys_lock);
@@ -47,10 +51,19 @@ syscall_init (void)
 /* Returns true if UADDR is a valid, mapped user address,
    false otherwise. */
 static bool verify_user (const void *uaddr) {
-  return (uaddr < PHYS_BASE
-          && pagedir_get_page (thread_current ()->pagedir, uaddr) != NULL);
+  struct thread *t = thread_current ();
+  struct s_page_entry temp_spe;
+  struct hash_elem *e;
+  printf("uaddr: %p\n", uaddr);
+  temp_spe.addr = (void*)ROUND_DOWN((int)uaddr, (int)PGSIZE);
+  e = hash_find(&t->s_page_table, &temp_spe.hash_elem);
+  printf("rounded: %p\n", temp_spe.addr);
+  bool check;
+  //if ()
+  return (uaddr < PHYS_BASE && e != NULL);
+  //TODO: may have to add reasonabless check here
 }
- 
+
 /* Copies a byte from user address USRC to kernel address DST.
    USRC must be below PHYS_BASE.
    Returns true if successful, false if a segfault occurred. */
@@ -60,7 +73,7 @@ static inline bool get_user (uint8_t *dst, const uint8_t *usrc) {
        : "=m" (*dst), "=&a" (eax) : "m" (*usrc));
   return eax != 0;
 }
- 
+
 /* Writes BYTE to user address UDST.
    UDST must be below PHYS_BASE.
    Returns true if successful, false if a segfault occurred. */
@@ -74,8 +87,8 @@ static inline bool put_user (uint8_t *udst, uint8_t byte) {
 // wrapper around user memory access functions
 // reads or writes SIZE number of bytes from/to user space
 // DST and SRC are used with respect to UAT
-static bool access_user_data 
-(void *dst, const void *src, size_t size, enum user_access_type uat) 
+static bool access_user_data
+(void *dst, const void *src, size_t size, enum user_access_type uat)
 {
   uint8_t *dst_byte = (uint8_t *)dst;
   uint8_t *src_byte = (uint8_t *)src;
@@ -92,7 +105,7 @@ static bool access_user_data
         if(!(verify_user(dst_byte+i) && put_user(dst_byte+i, *(src_byte+i))))
           return false;
         break;
-      
+
       default:
         return false;
     }
@@ -137,10 +150,10 @@ int sys_exit (int arg0, int arg1 UNUSED, int arg2 UNUSED)
   thread_current()->process->exit_status = status;
   printf("%s: exit(%d)\n", thread_current()->name, status);
 
-  // when running with USERPROG defined, thread_exit will also call process_exit 
+  // when running with USERPROG defined, thread_exit will also call process_exit
   if(lock_held_by_current_thread(&filesys_lock))
     lock_release(&filesys_lock);
-  
+
   // Free open files
   struct list *file_descriptors = &thread_current()->file_descriptors;
   while (!list_empty (file_descriptors))
@@ -167,7 +180,7 @@ int sys_exit (int arg0, int arg1 UNUSED, int arg2 UNUSED)
   bool parent_alive = thread_current()->process->parent_alive;
   if(parent_alive)
     sema_up(&(thread_current()->process->on_exit));
-  else 
+  else
     free(thread_current()->process);
 
   thread_exit();
@@ -216,24 +229,24 @@ static int sys_halt(int arg0 UNUSED, int arg1 UNUSED, int arg2 UNUSED)
 }
 
 static int sys_exec (int arg0, int arg1 UNUSED, int arg2 UNUSED)
-{ 
+{
   const char *args = (const char*)arg0;
 
   if(!verify_string(args))
     sys_exit(-1, 0, 0);
-  
+
   return process_execute(args);
 }
 
 static int sys_wait (int arg0, int arg1 UNUSED, int arg2 UNUSED)
-{ 
+{
   pid_t pid = arg0;
 
-  return process_wait(pid); 
+  return process_wait(pid);
 }
 
 static int sys_create (int arg0, int arg1, int arg2 UNUSED)
-{ 
+{
   const char *file = (const char*)arg0;
   unsigned initial_size = (unsigned)arg1;
   bool success = false;
@@ -245,14 +258,14 @@ static int sys_create (int arg0, int arg1, int arg2 UNUSED)
   success = filesys_create(file, initial_size);
   lock_release(&filesys_lock);
 
-  return success; 
+  return success;
 }
 
 static int sys_remove (int arg0, int arg1 UNUSED, int arg2 UNUSED)
-{ 
+{
   const char *file = (const char *)arg0;
   bool success = false;
-  
+
   if(file == NULL || !verify_string(file))
     sys_exit(-1, 0, 0);
 
@@ -260,12 +273,12 @@ static int sys_remove (int arg0, int arg1 UNUSED, int arg2 UNUSED)
   success = filesys_remove(file);
   lock_release(&filesys_lock);
 
-  return success; 
+  return success;
   return 0;
 }
 
 static int sys_open (int arg0, int arg1 UNUSED, int arg2 UNUSED)
-{ 
+{
   const char *file = (const char *)arg0;
 
   if(file == NULL || !verify_string(file))
@@ -282,11 +295,11 @@ static int sys_open (int arg0, int arg1 UNUSED, int arg2 UNUSED)
   of->fd = fd++;
   list_push_back(&thread_current()->file_descriptors, &of->elem);
 
-  return of->fd; 
+  return of->fd;
 }
 
 static int sys_filesize (int arg0, int arg1 UNUSED, int arg2 UNUSED)
-{ 
+{
   int fd = arg0;
   struct open_file *of = get_open_file(fd);
   if(!of)
@@ -295,16 +308,15 @@ static int sys_filesize (int arg0, int arg1 UNUSED, int arg2 UNUSED)
 }
 
 static int sys_read (int arg0, int arg1, int arg2)
-{ 
+{
   int fd = arg0;
   void *buffer = (void*)arg1;
   unsigned length = (unsigned)arg2;
   char *kernel_buffer;
   int bytes_read = 0;
-
   if(buffer == NULL || !verify_user(buffer))
     sys_exit(-1, 0, 0);
-  
+
   if(fd == 0)
   {
     char c = input_getc();
@@ -330,32 +342,32 @@ static int sys_read (int arg0, int arg1, int arg2)
     }
     free(kernel_buffer);
   }
-  
-  return bytes_read; 
+
+  return bytes_read;
 }
 
 static int sys_seek (int arg0, int arg1, int arg2 UNUSED)
-{ 
+{
   int fd = arg0;
   unsigned position = (unsigned)arg1;
   struct open_file *of = get_open_file(fd);
 
   file_seek(of->file, position);
-  return 0; 
+  return 0;
 }
 
 static int sys_tell (int arg0, int arg1 UNUSED, int arg2 UNUSED)
-{ 
+{
   int fd = arg0;
   struct open_file *of = get_open_file(fd);
 
   file_tell(of->file);
-  
-  return 0; 
+
+  return 0;
 }
 
 static int sys_close (int arg0, int arg1 UNUSED, int arg2 UNUSED)
-{ 
+{
   int fd = arg0;
   struct open_file *of = get_open_file(fd);
 
@@ -402,7 +414,7 @@ static struct syscall syscall_array[] =
 };
 
 static void
-syscall_handler (struct intr_frame *f) 
+syscall_handler (struct intr_frame *f)
 {
   int syscall_number = 0;
   int args[3] = {0,0,0};

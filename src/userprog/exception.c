@@ -156,7 +156,7 @@ page_fault (struct intr_frame *f)
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
 
-  // TODO: remove this - keeping for debugging
+  //TODO: remove this - keeping for debugging
   // printf ("Page fault at %p: %s error %s page in %s context.\n",
   //         fault_addr,
   //         not_present ? "not present" : "rights violation",
