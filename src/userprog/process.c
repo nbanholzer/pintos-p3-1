@@ -472,8 +472,6 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   return true;
 }
 
-/* Create a minimal stack by mapping a zeroed page at the top of
-   user virtual memory. */
 static bool
 setup_stack (void **esp, struct process *p)
 {
@@ -532,6 +530,7 @@ setup_stack (void **esp, struct process *p)
           stack -= sizeof(char*);
           memcpy(stack, &arg_pointers[i], sizeof(char*));
         }
+        free(arg_pointers);
 
         // Push argv address, converted to user space
         char **argv_start = PHYS_BASE - (stack_bottom - stack);

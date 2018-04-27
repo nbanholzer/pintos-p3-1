@@ -1,6 +1,7 @@
 #include "userprog/exception.h"
 #include <inttypes.h>
 #include <stdio.h>
+#include "lib/round.h"
 #include "userprog/gdt.h"
 #include "userprog/syscall.h"
 #include "threads/interrupt.h"
@@ -156,11 +157,11 @@ page_fault (struct intr_frame *f)
   user = (f->error_code & PF_U) != 0;
 
   // TODO: remove this - keeping for debugging
-  printf ("Page fault at %p: %s error %s page in %s context.\n",
-          fault_addr,
-          not_present ? "not present" : "rights violation",
-          write ? "writing" : "reading",
-          user ? "user" : "kernel");
+  // printf ("Page fault at %p: %s error %s page in %s context.\n",
+  //         fault_addr,
+  //         not_present ? "not present" : "rights violation",
+  //         write ? "writing" : "reading",
+  //         user ? "user" : "kernel");
 
   // Rights violations
   if(!not_present)
@@ -180,7 +181,7 @@ page_fault (struct intr_frame *f)
   struct s_page_entry temp_spe;
   struct hash_elem *e;
 
-  temp_spe.addr = fault_addr;
+  temp_spe.addr = (void*)ROUND_DOWN((int)fault_addr, (int)PGSIZE);
   e = hash_find(&t->s_page_table, &temp_spe.hash_elem);
   if (e != NULL) {
     struct s_page_entry *spe = hash_entry(e ,struct s_page_entry, hash_elem);

@@ -47,8 +47,7 @@ unsigned
 page_hash(const struct hash_elem *p_, void *aux UNUSED)
 {
   const struct s_page_entry *spe = hash_entry(p_, struct s_page_entry, hash_elem);
-  //TODO: Can we switch this sizeof to 8bytes since addresses are always the same size?
-  return hash_bytes(&spe->addr, sizeof(spe->addr));
+  return hash_int((int)spe->addr);
 }
 
 bool
