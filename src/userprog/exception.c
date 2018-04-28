@@ -181,7 +181,7 @@ page_fault (struct intr_frame *f)
   struct s_page_entry temp_spe;
   struct hash_elem *e;
 
-  temp_spe.addr = (void*)ROUND_DOWN((int)fault_addr, (int)PGSIZE);
+  temp_spe.addr = (void*)ROUND_DOWN((unsigned)fault_addr, (unsigned)PGSIZE);
   e = hash_find(&t->s_page_table, &temp_spe.hash_elem);
   if (e != NULL) {
     struct s_page_entry *spe = hash_entry(e ,struct s_page_entry, hash_elem);

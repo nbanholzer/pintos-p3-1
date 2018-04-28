@@ -484,7 +484,7 @@ setup_stack (void **esp, struct process *p)
     {
       // kpage/upage point to the bottom (address-wise) of the page
       uint8_t *upage = ((uint8_t *) PHYS_BASE) - PGSIZE;
-      printf("stack page: %p\n", upage );
+      //printf("stack page: %p\n", upage );
       success = install_page (upage, kpage, true);
       if (success)
       {
@@ -572,7 +572,7 @@ static bool
 install_page (void *upage, void *kpage, bool writable)
 {
   struct thread *t = thread_current ();
-  printf("install: %p\n", upage);
+  //printf("install: %p\n", upage);
 
   /* Verify that there's not already a page at that virtual
      address, then map our page there. */

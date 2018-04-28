@@ -54,10 +54,10 @@ static bool verify_user (const void *uaddr) {
   struct thread *t = thread_current ();
   struct s_page_entry temp_spe;
   struct hash_elem *e;
-  printf("uaddr: %p\n", uaddr);
-  temp_spe.addr = (void*)ROUND_DOWN((int)uaddr, (int)PGSIZE);
+  //printf("uaddr: %p\n", uaddr);
+  temp_spe.addr = (void*)ROUND_DOWN((unsigned)uaddr, (unsigned)PGSIZE);
   e = hash_find(&t->s_page_table, &temp_spe.hash_elem);
-  printf("rounded: %p\n", temp_spe.addr);
+  //printf("rounded: %p\n", temp_spe.addr);
   bool check;
   //if ()
   return (uaddr < PHYS_BASE && e != NULL);
