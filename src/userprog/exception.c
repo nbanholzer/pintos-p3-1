@@ -180,6 +180,8 @@ page_fault (struct intr_frame *f)
   struct thread *t = thread_current ();
   struct s_page_entry temp_spe;
   struct hash_elem *e;
+  if(fault_addr == NULL)
+    kill(f);
 
   temp_spe.addr = (void*)ROUND_DOWN((unsigned)fault_addr, (unsigned)PGSIZE);
   e = hash_find(&t->s_page_table, &temp_spe.hash_elem);
