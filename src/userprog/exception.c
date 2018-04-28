@@ -12,12 +12,15 @@
 #include "vm/frame.h"
 #include <string.h>
 #include "userprog/pagedir.h"
+#include "userprog/process.h"
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
 
 static void kill (struct intr_frame *);
 static void page_fault (struct intr_frame *);
+
+bool is_stack_grow_valid(void* fault_addr, void* esp);
 
 /* Registers handlers for interrupts that can be caused by user
    programs.
@@ -223,9 +226,28 @@ page_fault (struct intr_frame *f)
       spe->frame_addr = kpage;
     }
   }
-  // TODO: debug code, remove
+  //Stack growth
+  else if (is_stack_grow_valid(fault_addr, f->esp))
+  {
+    void* upage = (void*)ROUND_DOWN((unsigned)fault_addr, (unsigned)PGSIZE);
+    uint8_t *kpage = get_frame (0, upage);
+    struct s_page_entry * spage = init_stack_entry(upage, kpage);
+    hash_insert (&t->s_page_table, &spage->hash_elem);
+    if(!install_page(upage, kpage, true))
+      PANIC("WOAAAAAH");
+  }
+
   else {
-    PANIC("Missing supplemental page table entry for virtual address %p", fault_addr);
     kill(f);
   }
+}
+
+bool
+is_stack_grow_valid(void* fault_addr, void* esp)
+{
+  // void* current_stack_page_bottom = (void*)ROUND_DOWN((unsigned)esp, (unsigned)PGSIZE);
+  // void* fault_stack_page_bottom = (void*)ROUND_DOWN((unsigned)fault_addr, (unsigned)PGSIZE);
+  // printf("current stack: %p\n", esp);
+  // printf("fault stack: %p\n", fault_addr);
+  return (fault_addr >= esp - 32);
 }
