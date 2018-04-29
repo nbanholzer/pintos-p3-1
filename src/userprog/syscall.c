@@ -19,6 +19,8 @@
 
 static void syscall_handler (struct intr_frame *);
 
+static struct intr_frame * _f;
+
 enum user_access_type
 {
   USER_READ, USER_WRITE
@@ -59,8 +61,8 @@ static bool verify_user (const void *uaddr) {
   e = hash_find(&t->s_page_table, &temp_spe.hash_elem);
   //printf("rounded: %p\n", temp_spe.addr);
   bool check;
-  //if ()
-  return (uaddr < PHYS_BASE && e != NULL);
+  return (uaddr < PHYS_BASE && uaddr > _f->cs &&
+    (e != NULL || ((uaddr >= _f->esp - 32) && (uaddr > PHYS_BASE-(1024*1024*8)))));
   //TODO: may have to add reasonabless check here
 }
 
@@ -416,6 +418,7 @@ static struct syscall syscall_array[] =
 static void
 syscall_handler (struct intr_frame *f)
 {
+  _f = f;
   int syscall_number = 0;
   int args[3] = {0,0,0};
 
