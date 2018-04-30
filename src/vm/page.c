@@ -9,7 +9,7 @@
 #include <debug.h>
 #include <string.h>
 #include "threads/synch.h"
-#include "threads/vaddr.h"
+//#include "threads/vaddr.h"
 #include "threads/malloc.h"
 #include <debug.h>
 
@@ -58,4 +58,26 @@ page_less(const struct hash_elem *a_, const struct hash_elem *b_, void *aux UNUS
 
   return a->addr < b->addr;
 
+}
+
+void
+deallocate_page(struct hash_elem *element, void *aux UNUSED)
+{
+  struct s_page_entry *spe = hash_entry(element ,struct s_page_entry, hash_elem);
+  printf("debug 4\n");
+  if(spe->in_frame){
+    printf("debug 5\n");
+    free_frame(spe->frame_addr);
+    printf("debug 6\n");
+  }
+  // TODO: Swap free
+  free(spe);
+  printf("debug 7\n");
+}
+
+void
+delete_s_page_table(struct hash *table)
+{
+  printf("debug 3\n");
+  hash_destroy(table, deallocate_page);
 }

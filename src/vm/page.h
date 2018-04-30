@@ -5,6 +5,7 @@
 #include "filesys/directory.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
+#include "threads/vaddr.h"
 
 //should these have a lock?
 struct s_page_entry
@@ -29,6 +30,8 @@ unsigned page_hash(const struct hash_elem *p_, void *aux);
 
 bool page_less(const struct hash_elem *a_, const struct hash_elem *b_, void *aux);
 
-//TODO: Deallocate s_page_entry function
+void deallocate_page(struct hash_elem *element, void *aux UNUSED);
+
+void delete_s_page_table(struct hash *table);
 
 #endif /* vm/page.h */

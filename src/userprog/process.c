@@ -172,6 +172,10 @@ process_exit (void)
       cur->pagedir = NULL;
       pagedir_activate (NULL);
       pagedir_destroy (pd);
+      // printf("debug 1\n");
+      // if (cur->s_page_table_exits)
+      //   delete_s_page_table(&cur->s_page_table);
+      // printf("debug 2\n");
     }
 }
 
@@ -282,6 +286,7 @@ load (struct process *p, void (**eip) (void), void **esp)
 
   //supplementary page table
   hash_init(&t->s_page_table, page_hash, page_less, NULL);
+  t->s_page_table_exits = true;
 
   /* Open executable file. */
   file = filesys_open (p->name);

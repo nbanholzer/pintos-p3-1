@@ -98,6 +98,7 @@ struct thread
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
     struct hash s_page_table;
+    bool s_page_table_exits;
     struct process *process;
     struct list active_child_processes;
     struct list file_descriptors;
