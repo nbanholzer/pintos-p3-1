@@ -101,6 +101,7 @@ kill (struct intr_frame *f)
               thread_name (), f->vec_no, intr_name (f->vec_no));
       intr_dump_frame (f);
       sys_exit(-1, 0, 0);
+      __attribute__((fallthrough));
 
     case SEL_KCSEG:
       /* Kernel's code segment, which indicates a kernel bug.
@@ -166,88 +167,89 @@ page_fault (struct intr_frame *f)
   //         write ? "writing" : "reading",
   //         user ? "user" : "kernel");
 
-  // Rights violations
-  if(!not_present)
+  bool valid_fault = true;
+  
+  // Various immediately apparent invalid faults
+  if(!not_present || fault_addr == NULL)
+    valid_fault = false;
+
+  // Paging
+  else
+  {
+    struct thread *t = thread_current ();
+    struct s_page_entry temp_spe;
+    struct hash_elem *e;
+
+    temp_spe.addr = (void*)ROUND_DOWN((unsigned)fault_addr, (unsigned)PGSIZE);
+    e = hash_find(&t->s_page_table, &temp_spe.hash_elem);
+    if (e) 
+    {
+      struct s_page_entry *spe = hash_entry(e ,struct s_page_entry, hash_elem);
+      // if(write && !spe->writable)
+      //   valid_fault = false;
+      // else
+      {
+        if (spe->in_frame) {
+          PANIC ("page fault but frame should exist");
+        }
+
+        else if (spe->in_swap) {
+          //TODO: Swap code
+        }
+
+        else if (spe->in_file) {
+          /* Get a page of memory. */
+          uint8_t *kpage = get_frame (0, spe->addr);
+
+          /* Load this page. */
+          file_seek (spe->file, spe->ofs);
+          if (file_read (spe->file, kpage, spe->read_bytes) != (int) spe->read_bytes)
+          {
+            free_frame (kpage);
+          }
+
+          size_t page_zero_bytes = PGSIZE - spe->read_bytes;
+          memset (kpage + spe->read_bytes, 0, page_zero_bytes);
+
+          /* Add the page to the process's address space. */
+          if (!(pagedir_get_page (t->pagedir, spe->addr) == NULL
+                  && pagedir_set_page (t->pagedir, spe->addr, kpage, spe->writable)))
+          {
+            free_frame (kpage);
+          }
+
+          //Update update s_page_entry
+          spe->in_frame = true;
+          spe->in_file = false;
+          spe->frame_addr = kpage;
+        }
+      }
+    }
+
+    // Stack growth
+    else if (fault_addr >= f->esp - 32)
+    {
+      void* upage = (void*)ROUND_DOWN((unsigned)fault_addr, (unsigned)PGSIZE);
+      uint8_t *kpage = get_frame (0, upage);
+      struct s_page_entry * spage = init_stack_entry(upage, kpage);
+      hash_insert (&t->s_page_table, &spage->hash_elem);
+      if(!install_page(upage, kpage, true))
+        PANIC("WOAAAAAH");
+    }
+
+    // Everything else
+    else 
+      valid_fault = false;
+  }
+
+  if(!valid_fault)
   {
     if(user)
       kill(f);
     else
     {
       f->eip = (void*)f->eax;
-      f->eax = 0xffffffff;
-      return;
+      f->eax = false;
     }
   }
-
-  //Virtual Memory Code
-  struct thread *t = thread_current ();
-  struct s_page_entry temp_spe;
-  struct hash_elem *e;
-  if(fault_addr == NULL)
-    kill(f);
-
-  temp_spe.addr = (void*)ROUND_DOWN((unsigned)fault_addr, (unsigned)PGSIZE);
-  e = hash_find(&t->s_page_table, &temp_spe.hash_elem);
-  if (e != NULL) {
-    struct s_page_entry *spe = hash_entry(e ,struct s_page_entry, hash_elem);
-
-    if (spe->in_frame) {
-      PANIC ("page fault but frame should exist");
-    }
-
-    else if (spe->in_swap) {
-      //TODO: Swap code
-    }
-
-    else if (spe->in_file) {
-      /* Get a page of memory. */
-      uint8_t *kpage = get_frame (0, spe->addr);
-
-      /* Load this page. */
-      file_seek (spe->file, spe->ofs);
-      if (file_read (spe->file, kpage, spe->read_bytes) != (int) spe->read_bytes)
-        {
-          free_frame (kpage);
-        }
-
-      size_t page_zero_bytes = PGSIZE - spe->read_bytes;
-      memset (kpage + spe->read_bytes, 0, page_zero_bytes);
-
-      /* Add the page to the process's address space. */
-      if (!(pagedir_get_page (t->pagedir, spe->addr) == NULL
-              && pagedir_set_page (t->pagedir, spe->addr, kpage, spe->writable)))
-        {
-          free_frame (kpage);
-        }
-
-      //Update update s_page_entry
-      spe->in_frame = true;
-      spe->in_file = false;
-      spe->frame_addr = kpage;
-    }
-  }
-  //Stack growth
-  else if (is_stack_grow_valid(fault_addr, f->esp))
-  {
-    void* upage = (void*)ROUND_DOWN((unsigned)fault_addr, (unsigned)PGSIZE);
-    uint8_t *kpage = get_frame (0, upage);
-    struct s_page_entry * spage = init_stack_entry(upage, kpage);
-    hash_insert (&t->s_page_table, &spage->hash_elem);
-    if(!install_page(upage, kpage, true))
-      PANIC("WOAAAAAH");
-  }
-
-  else {
-    kill(f);
-  }
-}
-
-bool
-is_stack_grow_valid(void* fault_addr, void* esp)
-{
-  // void* current_stack_page_bottom = (void*)ROUND_DOWN((unsigned)esp, (unsigned)PGSIZE);
-  // void* fault_stack_page_bottom = (void*)ROUND_DOWN((unsigned)fault_addr, (unsigned)PGSIZE);
-  // printf("current stack: %p\n", esp);
-  // printf("fault stack: %p\n", fault_addr);
-  return (fault_addr >= esp - 32);
 }

@@ -52,24 +52,35 @@ syscall_init (void)
 
 /* Returns true if UADDR is a valid, mapped user address,
    false otherwise. */
-static bool verify_user (const void *uaddr) {
-  struct thread *t = thread_current ();
-  struct s_page_entry temp_spe;
-  struct hash_elem *e;
-  //printf("uaddr: %p\n", uaddr);
-  temp_spe.addr = (void*)ROUND_DOWN((unsigned)uaddr, (unsigned)PGSIZE);
-  e = hash_find(&t->s_page_table, &temp_spe.hash_elem);
-  //printf("rounded: %p\n", temp_spe.addr);
-  bool check;
-  return (uaddr < PHYS_BASE && uaddr > _f->cs &&
-    (e != NULL || ((uaddr >= _f->esp - 32) && (uaddr > PHYS_BASE-(1024*1024*8)))));
-  //TODO: may have to add reasonabless check here
-}
+// static bool verify_user (const void *uaddr) {
+//   struct thread *t = thread_current ();
+//   struct s_page_entry temp_spe;
+//   struct hash_elem *e;
+//   //printf("uaddr: %p\n", uaddr);
+//   temp_spe.addr = (void*)ROUND_DOWN((unsigned)uaddr, (unsigned)PGSIZE);
+//   e = hash_find(&t->s_page_table, &temp_spe.hash_elem);
+//   //printf("rounded: %p\n", temp_spe.addr);
+//   if (uaddr >= PHYS_BASE || _f->esp < PHYS_BASE-(1024*1024*8))
+//     return false;
+
+//   if(e)
+//   {
+//     struct s_page_entry *spe = hash_entry(e ,struct s_page_entry, hash_elem);
+//     return spe->writable;
+//   }
+//   else
+//   {
+//     return uaddr >= _f->esp - 32;
+//   }
+// }
 
 /* Copies a byte from user address USRC to kernel address DST.
    USRC must be below PHYS_BASE.
    Returns true if successful, false if a segfault occurred. */
 static inline bool get_user (uint8_t *dst, const uint8_t *usrc) {
+  if(usrc >= (uint8_t*)PHYS_BASE)
+    return false;
+
   int eax;
   asm ("movl $1f, %%eax; movb %2, %%al; movb %%al, %0; 1:"
        : "=m" (*dst), "=&a" (eax) : "m" (*usrc));
@@ -80,6 +91,9 @@ static inline bool get_user (uint8_t *dst, const uint8_t *usrc) {
    UDST must be below PHYS_BASE.
    Returns true if successful, false if a segfault occurred. */
 static inline bool put_user (uint8_t *udst, uint8_t byte) {
+  if(udst >= (uint8_t*)PHYS_BASE)
+    return false;
+
   int eax;
   asm ("movl $1f, %%eax; movb %b2, %0; 1:"
        : "=m" (*udst), "=&a" (eax) : "q" (byte));
@@ -99,12 +113,12 @@ static bool access_user_data
   {
     switch (uat){
       case USER_READ:
-        if(!(verify_user(src_byte+i) && get_user(dst_byte+i, src_byte+i)))
+        if(!get_user(dst_byte+i, src_byte+i))
           return false;
         break;
 
       case USER_WRITE:
-        if(!(verify_user(dst_byte+i) && put_user(dst_byte+i, *(src_byte+i))))
+        if(!put_user(dst_byte+i, *(src_byte+i)))
           return false;
         break;
 
@@ -113,18 +127,6 @@ static bool access_user_data
     }
   }
   return true;
-}
-
-// verifies that all bytes of a string pointed
-// to by S are in valid user address space
-static bool verify_string(const char* s)
-{
-  for(int i = 0; verify_user(s+i); i++)
-  {
-    if(s[i] == '\0')
-      return true;
-  }
-  return false;
 }
 
 // System calls
@@ -196,9 +198,6 @@ static int sys_write (int arg0, int arg1, int arg2)
   int bytes_written = 0;
   char *kernel_buffer;
 
-  if(buffer == NULL || !verify_user(buffer))
-    sys_exit(-1, 0, 0);
-
   // writing to stdout
   if(fd == 1)
   {
@@ -234,9 +233,6 @@ static int sys_exec (int arg0, int arg1 UNUSED, int arg2 UNUSED)
 {
   const char *args = (const char*)arg0;
 
-  if(!verify_string(args))
-    sys_exit(-1, 0, 0);
-
   return process_execute(args);
 }
 
@@ -253,7 +249,7 @@ static int sys_create (int arg0, int arg1, int arg2 UNUSED)
   unsigned initial_size = (unsigned)arg1;
   bool success = false;
 
-  if(file == NULL || !verify_string(file))
+  if(!file)
     sys_exit(-1, 0, 0);
 
   lock_acquire(&filesys_lock);
@@ -268,22 +264,18 @@ static int sys_remove (int arg0, int arg1 UNUSED, int arg2 UNUSED)
   const char *file = (const char *)arg0;
   bool success = false;
 
-  if(file == NULL || !verify_string(file))
-    sys_exit(-1, 0, 0);
-
   lock_acquire(&filesys_lock);
   success = filesys_remove(file);
   lock_release(&filesys_lock);
 
   return success;
-  return 0;
 }
 
 static int sys_open (int arg0, int arg1 UNUSED, int arg2 UNUSED)
 {
   const char *file = (const char *)arg0;
 
-  if(file == NULL || !verify_string(file))
+  if(!file)
     sys_exit(-1, 0, 0);
 
   struct file *f;
@@ -316,8 +308,6 @@ static int sys_read (int arg0, int arg1, int arg2)
   unsigned length = (unsigned)arg2;
   char *kernel_buffer;
   int bytes_read = 0;
-  if(buffer == NULL || !verify_user(buffer))
-    sys_exit(-1, 0, 0);
 
   if(fd == 0)
   {
