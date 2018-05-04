@@ -50,30 +50,6 @@ syscall_init (void)
 
 // User memory access functions
 
-/* Returns true if UADDR is a valid, mapped user address,
-   false otherwise. */
-// static bool verify_user (const void *uaddr) {
-//   struct thread *t = thread_current ();
-//   struct s_page_entry temp_spe;
-//   struct hash_elem *e;
-//   //printf("uaddr: %p\n", uaddr);
-//   temp_spe.addr = (void*)ROUND_DOWN((unsigned)uaddr, (unsigned)PGSIZE);
-//   e = hash_find(&t->s_page_table, &temp_spe.hash_elem);
-//   //printf("rounded: %p\n", temp_spe.addr);
-//   if (uaddr >= PHYS_BASE || _f->esp < PHYS_BASE-(1024*1024*8))
-//     return false;
-
-//   if(e)
-//   {
-//     struct s_page_entry *spe = hash_entry(e ,struct s_page_entry, hash_elem);
-//     return spe->writable;
-//   }
-//   else
-//   {
-//     return uaddr >= _f->esp - 32;
-//   }
-// }
-
 /* Reads a byte at user virtual address UADDR.
   UADDR must be below PHYS_BASE.
   Returns the byte value if successful, false if a segfault

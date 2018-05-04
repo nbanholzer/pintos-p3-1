@@ -171,7 +171,7 @@ page_fault (struct intr_frame *f)
   void *esp = user ? f->esp : thread_current()->esp;
   
   // Various immediately apparent invalid faults
-  if(!not_present)
+  if(!not_present || esp < PHYS_BASE-(1024*1024*8))
     valid_fault = false;
 
   // Paging
@@ -240,10 +240,7 @@ page_fault (struct intr_frame *f)
 
     // Everything else
     else
-    {
       valid_fault = false;
-
-    }
   }
 
   if(!valid_fault)
