@@ -168,9 +168,10 @@ page_fault (struct intr_frame *f)
   //         user ? "user" : "kernel");
 
   bool valid_fault = true;
+  void *esp = user ? f->esp : thread_current()->esp;
   
   // Various immediately apparent invalid faults
-  if(!not_present || fault_addr == NULL)
+  if(!not_present)
     valid_fault = false;
 
   // Paging
@@ -185,9 +186,9 @@ page_fault (struct intr_frame *f)
     if (e) 
     {
       struct s_page_entry *spe = hash_entry(e ,struct s_page_entry, hash_elem);
-      // if(write && !spe->writable)
-      //   valid_fault = false;
-      // else
+      if(write && !spe->writable)
+        valid_fault = false;
+      else
       {
         if (spe->in_frame) {
           PANIC ("page fault but frame should exist");
@@ -227,7 +228,7 @@ page_fault (struct intr_frame *f)
     }
 
     // Stack growth
-    else if (fault_addr >= f->esp - 32)
+    else if (fault_addr >= esp - 32)
     {
       void* upage = (void*)ROUND_DOWN((unsigned)fault_addr, (unsigned)PGSIZE);
       uint8_t *kpage = get_frame (0, upage);
@@ -238,8 +239,11 @@ page_fault (struct intr_frame *f)
     }
 
     // Everything else
-    else 
+    else
+    {
       valid_fault = false;
+
+    }
   }
 
   if(!valid_fault)
@@ -249,7 +253,7 @@ page_fault (struct intr_frame *f)
     else
     {
       f->eip = (void*)f->eax;
-      f->eax = false;
+      f->eax = -1;
     }
   }
 }

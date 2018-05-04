@@ -74,6 +74,22 @@ syscall_init (void)
 //   }
 // }
 
+/* Reads a byte at user virtual address UADDR.
+  UADDR must be below PHYS_BASE.
+  Returns the byte value if successful, false if a segfault
+  occurred. 
+  NOTE: Only using this to check for bad pointers, not to get data. */
+static inline bool verify_user (const uint8_t *uaddr)
+{
+  if(uaddr >= (uint8_t*)PHYS_BASE)
+    return false;
+
+  int result;
+  asm ("movl $1f, %0; movzbl %1, %0; 1:"
+    : "=&a" (result) : "m" (*uaddr));
+  return result != -1;
+}
+
 /* Copies a byte from user address USRC to kernel address DST.
    USRC must be below PHYS_BASE.
    Returns true if successful, false if a segfault occurred. */
@@ -84,7 +100,7 @@ static inline bool get_user (uint8_t *dst, const uint8_t *usrc) {
   int eax;
   asm ("movl $1f, %%eax; movb %2, %%al; movb %%al, %0; 1:"
        : "=m" (*dst), "=&a" (eax) : "m" (*usrc));
-  return eax != 0;
+  return eax != -1;
 }
 
 /* Writes BYTE to user address UDST.
@@ -97,7 +113,7 @@ static inline bool put_user (uint8_t *udst, uint8_t byte) {
   int eax;
   asm ("movl $1f, %%eax; movb %b2, %0; 1:"
        : "=m" (*udst), "=&a" (eax) : "q" (byte));
-  return eax != 0;
+  return eax != -1;
 }
 
 // wrapper around user memory access functions
@@ -232,6 +248,9 @@ static int sys_halt(int arg0 UNUSED, int arg1 UNUSED, int arg2 UNUSED)
 static int sys_exec (int arg0, int arg1 UNUSED, int arg2 UNUSED)
 {
   const char *args = (const char*)arg0;
+  
+  if(!verify_user((const unsigned char*)args))
+    sys_exit(-1, 0, 0);
 
   return process_execute(args);
 }
@@ -249,7 +268,7 @@ static int sys_create (int arg0, int arg1, int arg2 UNUSED)
   unsigned initial_size = (unsigned)arg1;
   bool success = false;
 
-  if(!file)
+  if(!file || !verify_user((const unsigned char*)file))
     sys_exit(-1, 0, 0);
 
   lock_acquire(&filesys_lock);
@@ -264,6 +283,9 @@ static int sys_remove (int arg0, int arg1 UNUSED, int arg2 UNUSED)
   const char *file = (const char *)arg0;
   bool success = false;
 
+  if(!file || !verify_user((const unsigned char*)file))
+    sys_exit(-1, 0, 0);
+
   lock_acquire(&filesys_lock);
   success = filesys_remove(file);
   lock_release(&filesys_lock);
@@ -275,14 +297,16 @@ static int sys_open (int arg0, int arg1 UNUSED, int arg2 UNUSED)
 {
   const char *file = (const char *)arg0;
 
-  if(!file)
+  if(!file || !verify_user((const unsigned char*)file))
     sys_exit(-1, 0, 0);
 
   struct file *f;
   lock_acquire(&filesys_lock);
-  if(!(f = filesys_open(file)))
-    return -1;
+  f = filesys_open(file);
   lock_release(&filesys_lock);
+
+  if(!f)
+    return -1;
 
   struct open_file *of = malloc(sizeof(struct open_file));
   of->file = f;
@@ -409,6 +433,7 @@ static void
 syscall_handler (struct intr_frame *f)
 {
   _f = f;
+  thread_current()->esp = _f->esp;
   int syscall_number = 0;
   int args[3] = {0,0,0};
 

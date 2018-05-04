@@ -102,6 +102,7 @@ struct thread
     struct process *process;
     struct list active_child_processes;
     struct list file_descriptors;
+    void *esp;
 #endif
 
     /* Owned by thread.c. */
