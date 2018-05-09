@@ -225,8 +225,16 @@ static int sys_exec (int arg0, int arg1 UNUSED, int arg2 UNUSED)
 {
   const char *args = (const char*)arg0;
   
-  if(!verify_user((const unsigned char*)args))
+  bool valid = true;
+  for(int i = 0; valid = verify_user((const unsigned char*)(args+i)); i++)
+  {
+    if(args[i] == '\0')
+      break;
+  }
+  if (!valid)
     sys_exit(-1, 0, 0);
+
+  printf("args: %s\n", args);
 
   return process_execute(args);
 }
