@@ -169,7 +169,7 @@ page_fault (struct intr_frame *f)
 
   bool valid_fault = true;
   void *esp = user ? f->esp : thread_current()->esp;
-  
+
   // Various immediately apparent invalid faults
   if(!not_present || esp < PHYS_BASE-(1024*1024*8))
     valid_fault = false;
@@ -183,7 +183,7 @@ page_fault (struct intr_frame *f)
 
     temp_spe.addr = (void*)ROUND_DOWN((unsigned)fault_addr, (unsigned)PGSIZE);
     e = hash_find(&t->s_page_table, &temp_spe.hash_elem);
-    if (e) 
+    if (e)
     {
       struct s_page_entry *spe = hash_entry(e ,struct s_page_entry, hash_elem);
       if(write && !spe->writable)
@@ -200,7 +200,7 @@ page_fault (struct intr_frame *f)
 
         else if (spe->in_file) {
           /* Get a page of memory. */
-          uint8_t *kpage = get_frame (0, spe->addr);
+          uint8_t *kpage = get_frame (0, spe->addr, t);
 
           /* Load this page. */
           file_seek (spe->file, spe->ofs);
@@ -231,7 +231,7 @@ page_fault (struct intr_frame *f)
     else if (fault_addr >= esp - 32)
     {
       void* upage = (void*)ROUND_DOWN((unsigned)fault_addr, (unsigned)PGSIZE);
-      uint8_t *kpage = get_frame (0, upage);
+      uint8_t *kpage = get_frame (0, upage, t);
       struct s_page_entry * spage = init_stack_entry(upage, kpage);
       hash_insert (&t->s_page_table, &spage->hash_elem);
       if(!install_page(upage, kpage, true))

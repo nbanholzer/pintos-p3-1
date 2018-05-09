@@ -9,11 +9,10 @@
 #include <debug.h>
 #include <string.h>
 #include "threads/synch.h"
-//#include "threads/vaddr.h"
 #include "threads/malloc.h"
 #include <debug.h>
 #include "userprog/pagedir.h"
-#include "threads/thread.h"
+#include "lib/round.h"
 
 struct s_page_entry*
 init_s_page_entry(uint8_t *u_addr, struct file *file, off_t ofs, size_t read_bytes, bool writable)
@@ -84,4 +83,21 @@ delete_s_page_table(struct hash *table)
 {
   //printf("debug 3\n");
   hash_destroy(table, deallocate_page);
+}
+
+struct s_page_entry *
+find_page_entry(struct thread *t, void * addr){
+  struct s_page_entry temp_spe;
+  struct hash_elem *e;
+
+  temp_spe.addr = (void*)ROUND_DOWN((unsigned)addr, (unsigned)PGSIZE);
+  e = hash_find(&t->s_page_table, &temp_spe.hash_elem);
+  if (e)
+  {
+    struct s_page_entry *spe = hash_entry(e ,struct s_page_entry, hash_elem);
+    return spe;
+  }
+  else{
+    return NULL;
+  }
 }

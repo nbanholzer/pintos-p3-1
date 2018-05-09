@@ -482,7 +482,8 @@ setup_stack (void **esp, struct process *p)
 {
   uint8_t *kpage;
   bool success = false;
-  kpage = get_frame (FRAME_ZERO, ((uint8_t *) PHYS_BASE) - PGSIZE);
+  struct thread *t = thread_current ();
+  kpage = get_frame (FRAME_ZERO, ((uint8_t *) PHYS_BASE) - PGSIZE, t);
   if (kpage != NULL)
     {
       // kpage/upage point to the bottom (address-wise) of the page
@@ -492,7 +493,6 @@ setup_stack (void **esp, struct process *p)
       if (success)
       {
         //Add to supplementary page table
-        struct thread *t = thread_current ();
         struct s_page_entry * spage = init_stack_entry(upage, kpage);
         hash_insert (&t->s_page_table, &spage->hash_elem);
 
