@@ -234,8 +234,6 @@ static int sys_exec (int arg0, int arg1 UNUSED, int arg2 UNUSED)
   if (!valid)
     sys_exit(-1, 0, 0);
 
-  printf("args: %s\n", args);
-
   return process_execute(args);
 }
 
