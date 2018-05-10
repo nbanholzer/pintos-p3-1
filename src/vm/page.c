@@ -13,6 +13,7 @@
 #include <debug.h>
 #include "userprog/pagedir.h"
 #include "lib/round.h"
+#include "vm/swap.h"
 
 struct s_page_entry*
 init_s_page_entry(uint8_t *u_addr, struct file *file, off_t ofs, size_t read_bytes, bool writable)
@@ -41,6 +42,7 @@ init_stack_entry(uint8_t *u_addr, uint8_t *frame_addr)
   spe->in_swap = false;
   spe->in_file = false;
   spe->writable = true;
+  spe->file = NULL;
   return spe;
 }
 
@@ -66,23 +68,22 @@ deallocate_page(struct hash_elem *element, void *aux)
 {
   struct thread *t = aux;
   struct s_page_entry *spe = hash_entry(element ,struct s_page_entry, hash_elem);
-  //printf("debug 4\n");
   if(spe->in_frame){
-    //printf("debug 5\n");
+    lock_acquire(get_frame_lock(spe->frame_addr));
     pagedir_clear_page(t->pagedir, spe->addr);
     free_frame(spe->frame_addr);
-    //printf("debug 6\n");
+    lock_release(get_frame_lock(spe->frame_addr));
   }
-  // TODO: Swap free
+  if(spe->in_swap){
+    swap_free(spe->swap_idx);
+  }
   hash_delete(&t->s_page_table, &spe->hash_elem);
   free(spe);
-  //printf("debug 7\n");
 }
 
 void
 delete_s_page_table(struct hash *table)
 {
-  //printf("debug 3\n");
   hash_destroy(table, deallocate_page);
 }
 

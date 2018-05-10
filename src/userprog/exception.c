@@ -13,6 +13,7 @@
 #include <string.h>
 #include "userprog/pagedir.h"
 #include "userprog/process.h"
+#include "vm/swap.h"
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -160,7 +161,7 @@ page_fault (struct intr_frame *f)
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
 
-  //TODO: remove this - keeping for debugging
+  // //TODO: remove this - keeping for debugging
   // printf ("Page fault at %p: %s error %s page in %s context.\n",
   //         fault_addr,
   //         not_present ? "not present" : "rights violation",
@@ -171,9 +172,9 @@ page_fault (struct intr_frame *f)
   void *esp = user ? f->esp : thread_current()->esp;
 
   // Various immediately apparent invalid faults
-  if(!not_present || esp < PHYS_BASE-(1024*1024*8))
+  if(!not_present || esp < PHYS_BASE-(1024*1024*8)){
     valid_fault = false;
-
+  }
   // Paging
   else
   {
@@ -186,8 +187,9 @@ page_fault (struct intr_frame *f)
     if (e)
     {
       struct s_page_entry *spe = hash_entry(e ,struct s_page_entry, hash_elem);
-      if(write && !spe->writable)
+      if(write && !spe->writable){
         valid_fault = false;
+      }
       else
       {
         if (spe->in_frame) {
@@ -195,16 +197,43 @@ page_fault (struct intr_frame *f)
         }
 
         else if (spe->in_swap) {
-          //TODO: Swap code
+          uint8_t *kpage = get_frame (0, spe->addr, t);
+          if (kpage == NULL) {
+            return;
+          }
+          /* Load this page. */
+          struct lock *frame_lock = get_frame_lock(kpage);
+          lock_acquire(frame_lock);
+          //Read in from swap_idx
+          swap_read(kpage, spe->swap_idx);
+          swap_free(spe->swap_idx);
+          /* Add the page to the process's address space. */
+          if (!(pagedir_get_page (t->pagedir, spe->addr) == NULL
+                  && pagedir_set_page (t->pagedir, spe->addr, kpage, spe->writable)))
+          {
+            free_frame (kpage);
+          }
+          else{
+          //Update update s_page_entry
+            spe->in_frame = true;
+            spe->in_swap = false;
+            spe->frame_addr = kpage;
+          }
+          lock_release(frame_lock);
         }
 
         else if (spe->in_file) {
           /* Get a page of memory. */
           uint8_t *kpage = get_frame (0, spe->addr, t);
+          if (kpage == NULL) {
+            return;
+          }
 
           /* Load this page. */
-          // TODO: file system calls need to be protected by a lock
-          // there's one in syscall.c, but we may need to make that more available
+          struct lock *frame_lock = get_frame_lock(kpage);
+          lock_acquire(frame_lock);
+          lock_acquire(thread_current()->filesys_lock);
+
           if (file_read_at (spe->file, kpage, spe->read_bytes, spe->ofs) != (int) spe->read_bytes)
           {
             free_frame (kpage);
@@ -213,17 +242,22 @@ page_fault (struct intr_frame *f)
           size_t page_zero_bytes = PGSIZE - spe->read_bytes;
           memset (kpage + spe->read_bytes, 0, page_zero_bytes);
 
+          lock_release(thread_current()->filesys_lock);
+
+
           /* Add the page to the process's address space. */
           if (!(pagedir_get_page (t->pagedir, spe->addr) == NULL
                   && pagedir_set_page (t->pagedir, spe->addr, kpage, spe->writable)))
           {
             free_frame (kpage);
           }
-
+          else{
           //Update update s_page_entry
-          spe->in_frame = true;
-          spe->in_file = false;
-          spe->frame_addr = kpage;
+            spe->in_frame = true;
+            spe->in_file = false;
+            spe->frame_addr = kpage;
+          }
+          lock_release(frame_lock);
         }
       }
     }
@@ -233,6 +267,9 @@ page_fault (struct intr_frame *f)
     {
       void* upage = pg_round_down(fault_addr);
       uint8_t *kpage = get_frame (0, upage, t);
+      if (kpage == NULL) {
+        return;
+      }
       struct s_page_entry * spage = init_stack_entry(upage, kpage);
       hash_insert (&t->s_page_table, &spage->hash_elem);
       if(!install_page(upage, kpage, true))
@@ -240,14 +277,13 @@ page_fault (struct intr_frame *f)
     }
 
     // Everything else
-    else
+    else{
       valid_fault = false;
+    }
   }
 
   if(!valid_fault)
   {
-    // TODO: remove
-    // printf("invalid fault\n");
     if(user)
       kill(f);
     else

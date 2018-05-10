@@ -24,11 +24,13 @@ struct frame
   void *upage;
   void *kpage;
   struct thread *t;
+  struct lock lock;
 };
 
 void init_frame_table(void);
 void *get_frame (enum frame_flags, void* upage, struct thread *t);
 void *get_frame_multiple(enum frame_flags, size_t frame_cnt, void* upage, struct thread *t);
+struct lock *get_frame_lock(void *frame);
 void free_frame (void *frame);
 void free_frame_multiple(void *frames, size_t frame_cnt);
 void evict(struct frame *frame);

@@ -28,7 +28,7 @@ void
 init_swap_table()
 {
   swap_table.swap_block = block_get_role(BLOCK_SWAP);
-  swap_table.swap_size = (size_t)(block_size(swap_table.swap_block)/8);
+  swap_table.swap_size = (size_t)(block_size(swap_table.swap_block)/8); 
   swap_table.used_map = bitmap_create(swap_table.swap_size);
   lock_init(&swap_table.lock);
 }
@@ -46,6 +46,7 @@ swap_write(void * frame)
     block_write(swap_table.swap_block, (write_idx * 8) + i, frame + (512 * i));
   }
   lock_release(&swap_table.lock);
+  return write_idx;
 }
 
 void
@@ -54,6 +55,14 @@ swap_read(void * frame, size_t swap_idx) {
   for (size_t i = 0; i < 8; i++) {
     block_read(swap_table.swap_block, (swap_idx * 8) + i, frame + (512 * i));
   }
+  bitmap_set_multiple(swap_table.used_map, swap_idx, 1, false);
+  lock_release(&swap_table.lock);
+}
+
+void
+swap_free(size_t swap_idx)
+{
+  lock_acquire(&swap_table.lock);
   bitmap_set_multiple(swap_table.used_map, swap_idx, 1, false);
   lock_release(&swap_table.lock);
 }

@@ -104,6 +104,7 @@ struct thread
     struct list file_descriptors;
     struct list mapped_files;
     void *esp;
+    struct lock *filesys_lock;
 #endif
 
     /* Owned by thread.c. */

@@ -40,6 +40,9 @@ static struct thread *initial_thread;
 /* Lock used by allocate_tid(). */
 static struct lock tid_lock;
 
+/* File system lock */
+static struct lock filesys_lock;
+
 /* Stack frame for kernel_thread(). */
 struct kernel_thread_frame
   {
@@ -95,6 +98,7 @@ thread_init (void)
   lock_init (&tid_lock);
   list_init (&ready_list);
   list_init (&all_list);
+  lock_init (&filesys_lock);
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
@@ -470,6 +474,7 @@ init_thread (struct thread *t, const char *name, int priority, void *aux)
   list_init(&t->active_child_processes);
   list_init(&t->file_descriptors);
   list_init(&t->mapped_files);
+  t->filesys_lock = &filesys_lock;
   t->process = (struct process *)aux;
 
   old_level = intr_disable ();

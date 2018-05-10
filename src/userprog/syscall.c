@@ -26,10 +26,6 @@ enum user_access_type
   USER_READ, USER_WRITE
 };
 
-// Lock required for making calls into filesys. Concurrency
-// is not supported for those calls
-static struct lock filesys_lock;
-
 // TODO: this is just going to keep increasing, which would ultimately
 // break on integer overflow, though that probably won't happen
 static int fd = 2;
@@ -52,7 +48,6 @@ void
 syscall_init (void)
 {
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
-  lock_init(&filesys_lock);
 }
 
 
@@ -61,7 +56,7 @@ syscall_init (void)
 /* Reads a byte at user virtual address UADDR.
   UADDR must be below PHYS_BASE.
   Returns the byte value if successful, false if a segfault
-  occurred. 
+  occurred.
   NOTE: Only using this to check for bad pointers, not to get data. */
 static inline bool verify_user (const uint8_t *uaddr)
 {
@@ -170,16 +165,13 @@ static int sys_mmap (int arg0, int arg1, int arg2 UNUSED)
   struct open_file *of = get_open_file(fd);
 
   // Various failure conditions
-  if(!of || !file_length(of->file) || !addr || 
+  if(!of || !file_length(of->file) || !addr ||
      pg_ofs(addr) || fd == 0 || fd == 1)
     return -1;
 
   size_t bytes_to_map = file_length(of->file);
   size_t zero_bytes = ROUND_UP(bytes_to_map, PGSIZE) - bytes_to_map;
   unsigned num_pages = (bytes_to_map + zero_bytes) / PGSIZE;
-
-  // TODO: remove
-  // printf("btm: %u; zb: %u; np: %u\n", bytes_to_map, zero_bytes, num_pages);
 
   // Ensure the area requested is not mapped
   for(unsigned i = 0; i < num_pages; i++)
@@ -202,6 +194,7 @@ static int sys_mmap (int arg0, int arg1, int arg2 UNUSED)
     size_t page_zero_bytes = PGSIZE - page_mapped_bytes;
 
     struct s_page_entry * spage = init_s_page_entry(addr, of->file, offset, page_mapped_bytes, true);
+    spage->is_mmap = true;
     hash_insert (&thread_current()->s_page_table, &spage->hash_elem);
 
     offset += page_mapped_bytes;
@@ -224,16 +217,12 @@ static int sys_munmap (int arg0, int arg1 UNUSED, int arg2 UNUSED)
     {
       void *addr_to_unmap = mf->base_page + (i * PGSIZE);
       struct s_page_entry *spe = find_page_entry(thread_current(), addr_to_unmap);
-      if(pagedir_is_dirty(thread_current()->pagedir, spe->addr))
+      if(pagedir_is_dirty(thread_current()->pagedir, spe->addr) && spe->in_frame)
       {
-        lock_acquire(&filesys_lock);
+        lock_acquire(thread_current()->filesys_lock);
         // TODO: this is gonna blow up if this thing isn't in a frame
         unsigned bytes_written = file_write_at(spe->file, spe->frame_addr, spe->read_bytes, spe->ofs);
-        lock_release(&filesys_lock);
-        // TODO: remove
-        // printf("rb: %u\n", spe->read_bytes);
-        // printf("bw: %u\n", bytes_written);
-        // printf("spe->file: %p\n", spe->file);
+        lock_release(thread_current()->filesys_lock);
       }
       deallocate_page(&spe->hash_elem, thread_current());
     }
@@ -251,8 +240,8 @@ int sys_exit (int arg0, int arg1 UNUSED, int arg2 UNUSED)
   printf("%s: exit(%d)\n", thread_current()->name, status);
 
   // when running with USERPROG defined, thread_exit will also call process_exit
-  if(lock_held_by_current_thread(&filesys_lock))
-    lock_release(&filesys_lock);
+  if(lock_held_by_current_thread(thread_current()->filesys_lock))
+    lock_release(thread_current()->filesys_lock);
 
   // Unmap memory-mapped files
   struct list *mapped_files = &thread_current()->mapped_files;
@@ -269,12 +258,12 @@ int sys_exit (int arg0, int arg1 UNUSED, int arg2 UNUSED)
   {
     struct list_elem *e = list_pop_front (file_descriptors);
     struct open_file *of = list_entry (e, struct open_file, elem);
-    lock_acquire(&filesys_lock);
+    lock_acquire(thread_current()->filesys_lock);
     file_close(of->file);
-    lock_release(&filesys_lock);
+    lock_release(thread_current()->filesys_lock);
     free(of);
   }
-  
+
 
   // Inform children that parent has exited
   struct list *active_child_processes = &thread_current()->active_child_processes;
@@ -322,9 +311,9 @@ static int sys_write (int arg0, int arg1, int arg2)
       free(kernel_buffer);
       sys_exit(-1, 0, 0);
     }
-    lock_acquire(&filesys_lock);
+    lock_acquire(thread_current()->filesys_lock);
     bytes_written = file_write(of->file, kernel_buffer, length);
-    lock_release(&filesys_lock);
+    lock_release(thread_current()->filesys_lock);
   }
 
   return bytes_written;
@@ -338,7 +327,6 @@ static int sys_halt(int arg0 UNUSED, int arg1 UNUSED, int arg2 UNUSED)
 static int sys_exec (int arg0, int arg1 UNUSED, int arg2 UNUSED)
 {
   const char *args = (const char*)arg0;
-  
   bool valid = true;
   for(int i = 0; (valid = verify_user((const unsigned char*)(args+i))); i++)
   {
@@ -367,9 +355,9 @@ static int sys_create (int arg0, int arg1, int arg2 UNUSED)
   if(!file || !verify_user((const unsigned char*)file))
     sys_exit(-1, 0, 0);
 
-  lock_acquire(&filesys_lock);
+  lock_acquire(thread_current()->filesys_lock);
   success = filesys_create(file, initial_size);
-  lock_release(&filesys_lock);
+  lock_release(thread_current()->filesys_lock);
 
   return success;
 }
@@ -382,9 +370,9 @@ static int sys_remove (int arg0, int arg1 UNUSED, int arg2 UNUSED)
   if(!file || !verify_user((const unsigned char*)file))
     sys_exit(-1, 0, 0);
 
-  lock_acquire(&filesys_lock);
+  lock_acquire(thread_current()->filesys_lock);
   success = filesys_remove(file);
-  lock_release(&filesys_lock);
+  lock_release(thread_current()->filesys_lock);
 
   return success;
 }
@@ -397,9 +385,9 @@ static int sys_open (int arg0, int arg1 UNUSED, int arg2 UNUSED)
     sys_exit(-1, 0, 0);
 
   struct file *f;
-  lock_acquire(&filesys_lock);
+  lock_acquire(thread_current()->filesys_lock);
   f = filesys_open(file);
-  lock_release(&filesys_lock);
+  lock_release(thread_current()->filesys_lock);
 
   if(!f)
     return -1;
@@ -443,9 +431,9 @@ static int sys_read (int arg0, int arg1, int arg2)
       return -1;
 
     kernel_buffer = malloc(length);
-    lock_acquire(&filesys_lock);
+    lock_acquire(thread_current()->filesys_lock);
     bytes_read = file_read(of->file, kernel_buffer, length);
-    lock_release(&filesys_lock);
+    lock_release(thread_current()->filesys_lock);
 
     if(!access_user_data(buffer, kernel_buffer, bytes_read, USER_WRITE))
     {
@@ -515,7 +503,6 @@ syscall_handler (struct intr_frame *f)
   thread_current()->esp = _f->esp;
   int syscall_number = 0;
   int args[3] = {0,0,0};
-
   if(!access_user_data(&syscall_number, f->esp, 4, USER_READ))
     sys_exit(-1, 0, 0);
 
