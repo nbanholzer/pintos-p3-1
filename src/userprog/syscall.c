@@ -388,12 +388,23 @@ static int sys_mmap (int arg0, int arg1, int arg2 UNUSED)
      pg_ofs(addr) || fd == 0 || fd == 1)
     return -1;
 
-  void *end_page_base = pg_round_down(addr + file_length(of->file));
-  for(unsigned i = 0; i < pg_no(end_page_base) - pg_no(addr); i++)
+  size_t page_bytes = file_length(of->file);
+  void *end_page_base = pg_round_down(addr + page_bytes);
+  unsigned num_pages = pg_no(end_page_base) - pg_no(addr);
+
+  for(unsigned i = 0; i < num_pages; i++)
   {
     void *check_addr = addr + (i * PGSIZE);
     if(find_page_entry(thread_current(), check_addr))
       return -1;
+  }
+
+  for(unsigned i = 0; i < pg_no(end_page_base) - pg_no(addr); i++)
+  {
+    void *page_to_map = addr + (i * PGSIZE);
+    
+    struct s_page_entry * spage = init_s_page_entry(page_to_map, of->file, , page_read_bytes, writable);
+    hash_insert (&t->s_page_table, &spage->hash_elem);
   }
 
   return 0;
