@@ -12,8 +12,14 @@
 #include "devices/input.h"
 #include "filesys/filesys.h"
 #include "filesys/file.h"
+#include "vm/page.h"
+#include "lib/kernel/hash.h"
+#include "lib/round.h"
+#include <string.h>
 
 static void syscall_handler (struct intr_frame *);
+
+static struct intr_frame * _f;
 
 enum user_access_type
 {
@@ -35,7 +41,7 @@ struct open_file
 };
 
 void
-syscall_init (void) 
+syscall_init (void)
 {
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
   lock_init(&filesys_lock);
@@ -44,38 +50,53 @@ syscall_init (void)
 
 // User memory access functions
 
-/* Returns true if UADDR is a valid, mapped user address,
-   false otherwise. */
-static bool verify_user (const void *uaddr) {
-  return (uaddr < PHYS_BASE
-          && pagedir_get_page (thread_current ()->pagedir, uaddr) != NULL);
+/* Reads a byte at user virtual address UADDR.
+  UADDR must be below PHYS_BASE.
+  Returns the byte value if successful, false if a segfault
+  occurred. 
+  NOTE: Only using this to check for bad pointers, not to get data. */
+static inline bool verify_user (const uint8_t *uaddr)
+{
+  if(uaddr >= (uint8_t*)PHYS_BASE)
+    return false;
+
+  int result;
+  asm ("movl $1f, %0; movzbl %1, %0; 1:"
+    : "=&a" (result) : "m" (*uaddr));
+  return result != -1;
 }
- 
+
 /* Copies a byte from user address USRC to kernel address DST.
    USRC must be below PHYS_BASE.
    Returns true if successful, false if a segfault occurred. */
 static inline bool get_user (uint8_t *dst, const uint8_t *usrc) {
+  if(usrc >= (uint8_t*)PHYS_BASE)
+    return false;
+
   int eax;
   asm ("movl $1f, %%eax; movb %2, %%al; movb %%al, %0; 1:"
        : "=m" (*dst), "=&a" (eax) : "m" (*usrc));
-  return eax != 0;
+  return eax != -1;
 }
- 
+
 /* Writes BYTE to user address UDST.
    UDST must be below PHYS_BASE.
    Returns true if successful, false if a segfault occurred. */
 static inline bool put_user (uint8_t *udst, uint8_t byte) {
+  if(udst >= (uint8_t*)PHYS_BASE)
+    return false;
+
   int eax;
   asm ("movl $1f, %%eax; movb %b2, %0; 1:"
        : "=m" (*udst), "=&a" (eax) : "q" (byte));
-  return eax != 0;
+  return eax != -1;
 }
 
 // wrapper around user memory access functions
 // reads or writes SIZE number of bytes from/to user space
 // DST and SRC are used with respect to UAT
-static bool access_user_data 
-(void *dst, const void *src, size_t size, enum user_access_type uat) 
+static bool access_user_data
+(void *dst, const void *src, size_t size, enum user_access_type uat)
 {
   uint8_t *dst_byte = (uint8_t *)dst;
   uint8_t *src_byte = (uint8_t *)src;
@@ -84,32 +105,20 @@ static bool access_user_data
   {
     switch (uat){
       case USER_READ:
-        if(!(verify_user(src_byte+i) && get_user(dst_byte+i, src_byte+i)))
+        if(!get_user(dst_byte+i, src_byte+i))
           return false;
         break;
 
       case USER_WRITE:
-        if(!(verify_user(dst_byte+i) && put_user(dst_byte+i, *(src_byte+i))))
+        if(!put_user(dst_byte+i, *(src_byte+i)))
           return false;
         break;
-      
+
       default:
         return false;
     }
   }
   return true;
-}
-
-// verifies that all bytes of a string pointed
-// to by S are in valid user address space
-static bool verify_string(const char* s)
-{
-  for(int i = 0; verify_user(s+i); i++)
-  {
-    if(s[i] == '\0')
-      return true;
-  }
-  return false;
 }
 
 // System calls
@@ -137,10 +146,10 @@ int sys_exit (int arg0, int arg1 UNUSED, int arg2 UNUSED)
   thread_current()->process->exit_status = status;
   printf("%s: exit(%d)\n", thread_current()->name, status);
 
-  // when running with USERPROG defined, thread_exit will also call process_exit 
+  // when running with USERPROG defined, thread_exit will also call process_exit
   if(lock_held_by_current_thread(&filesys_lock))
     lock_release(&filesys_lock);
-  
+
   // Free open files
   struct list *file_descriptors = &thread_current()->file_descriptors;
   while (!list_empty (file_descriptors))
@@ -167,7 +176,7 @@ int sys_exit (int arg0, int arg1 UNUSED, int arg2 UNUSED)
   bool parent_alive = thread_current()->process->parent_alive;
   if(parent_alive)
     sema_up(&(thread_current()->process->on_exit));
-  else 
+  else
     free(thread_current()->process);
 
   thread_exit();
@@ -180,9 +189,6 @@ static int sys_write (int arg0, int arg1, int arg2)
   unsigned length = (unsigned)arg2;
   int bytes_written = 0;
   char *kernel_buffer;
-
-  if(buffer == NULL || !verify_user(buffer))
-    sys_exit(-1, 0, 0);
 
   // writing to stdout
   if(fd == 1)
@@ -216,77 +222,84 @@ static int sys_halt(int arg0 UNUSED, int arg1 UNUSED, int arg2 UNUSED)
 }
 
 static int sys_exec (int arg0, int arg1 UNUSED, int arg2 UNUSED)
-{ 
+{
   const char *args = (const char*)arg0;
-
-  if(!verify_string(args))
-    sys_exit(-1, 0, 0);
   
+  bool valid = true;
+  for(int i = 0; valid = verify_user((const unsigned char*)(args+i)); i++)
+  {
+    if(args[i] == '\0')
+      break;
+  }
+  if (!valid)
+    sys_exit(-1, 0, 0);
+
   return process_execute(args);
 }
 
 static int sys_wait (int arg0, int arg1 UNUSED, int arg2 UNUSED)
-{ 
+{
   pid_t pid = arg0;
 
-  return process_wait(pid); 
+  return process_wait(pid);
 }
 
 static int sys_create (int arg0, int arg1, int arg2 UNUSED)
-{ 
+{
   const char *file = (const char*)arg0;
   unsigned initial_size = (unsigned)arg1;
   bool success = false;
 
-  if(file == NULL || !verify_string(file))
+  if(!file || !verify_user((const unsigned char*)file))
     sys_exit(-1, 0, 0);
 
   lock_acquire(&filesys_lock);
   success = filesys_create(file, initial_size);
   lock_release(&filesys_lock);
 
-  return success; 
+  return success;
 }
 
 static int sys_remove (int arg0, int arg1 UNUSED, int arg2 UNUSED)
-{ 
+{
   const char *file = (const char *)arg0;
   bool success = false;
-  
-  if(file == NULL || !verify_string(file))
+
+  if(!file || !verify_user((const unsigned char*)file))
     sys_exit(-1, 0, 0);
 
   lock_acquire(&filesys_lock);
   success = filesys_remove(file);
   lock_release(&filesys_lock);
 
-  return success; 
-  return 0;
+  return success;
 }
 
 static int sys_open (int arg0, int arg1 UNUSED, int arg2 UNUSED)
-{ 
+{
   const char *file = (const char *)arg0;
 
-  if(file == NULL || !verify_string(file))
+  if(!file || !verify_user((const unsigned char*)file))
     sys_exit(-1, 0, 0);
 
   struct file *f;
   lock_acquire(&filesys_lock);
-  if(!(f = filesys_open(file)))
-    return -1;
+  f = filesys_open(file);
   lock_release(&filesys_lock);
+
+  if(!f)
+    return -1;
 
   struct open_file *of = malloc(sizeof(struct open_file));
   of->file = f;
   of->fd = fd++;
   list_push_back(&thread_current()->file_descriptors, &of->elem);
 
-  return of->fd; 
+  return of->fd;
 }
 
 static int sys_filesize (int arg0, int arg1 UNUSED, int arg2 UNUSED)
-{ 
+{
   int fd = arg0;
   struct open_file *of = get_open_file(fd);
   if(!of)
@@ -295,16 +308,13 @@ static int sys_filesize (int arg0, int arg1 UNUSED, int arg2 UNUSED)
 }
 
 static int sys_read (int arg0, int arg1, int arg2)
-{ 
+{
   int fd = arg0;
   void *buffer = (void*)arg1;
   unsigned length = (unsigned)arg2;
   char *kernel_buffer;
   int bytes_read = 0;
 
-  if(buffer == NULL || !verify_user(buffer))
-    sys_exit(-1, 0, 0);
-  
   if(fd == 0)
   {
     char c = input_getc();
@@ -330,32 +340,32 @@ static int sys_read (int arg0, int arg1, int arg2)
     }
     free(kernel_buffer);
   }
-  
-  return bytes_read; 
+
+  return bytes_read;
 }
 
 static int sys_seek (int arg0, int arg1, int arg2 UNUSED)
-{ 
+{
   int fd = arg0;
   unsigned position = (unsigned)arg1;
   struct open_file *of = get_open_file(fd);
 
   file_seek(of->file, position);
-  return 0; 
+  return 0;
 }
 
 static int sys_tell (int arg0, int arg1 UNUSED, int arg2 UNUSED)
-{ 
+{
   int fd = arg0;
   struct open_file *of = get_open_file(fd);
 
   file_tell(of->file);
-  
-  return 0; 
+
+  return 0;
 }
 
 static int sys_close (int arg0, int arg1 UNUSED, int arg2 UNUSED)
-{ 
+{
   int fd = arg0;
   struct open_file *of = get_open_file(fd);
 
@@ -366,6 +376,23 @@ static int sys_close (int arg0, int arg1 UNUSED, int arg2 UNUSED)
   }
 
   return 0;
+}
+
+// TODO: implement, remove UNUSED from locals
+static int sys_mmap (int arg0, int arg1, int arg2 UNUSED)
+{
+  UNUSED int fd = arg0;
+  UNUSED void *addr = (void*)arg1;
+
+  sys_exit(-1, 0, 0);
+  return 0;
+}
+
+static int sys_munmap (int arg0, int arg1 UNUSED, int arg2 UNUSED)
+{
+  UNUSED mapid_t fd = arg0;
+
+  sys_exit(-1, 0, 0);
 }
 
 // Syscall dispatch table
@@ -380,12 +407,15 @@ static struct syscall syscall_array[] =
 {
   {0, sys_halt}, {1, sys_exit}, {1, sys_exec}, {1, sys_wait},
   {2, sys_create}, {1, sys_remove}, {1, sys_open}, {1, sys_filesize},
-  {3, sys_read}, {3, sys_write}, {2, sys_seek}, {1, sys_tell}, {1, sys_close}
+  {3, sys_read}, {3, sys_write}, {2, sys_seek}, {1, sys_tell}, {1, sys_close},
+  {2, sys_mmap}, {1, sys_munmap}
 };
 
 static void
-syscall_handler (struct intr_frame *f) 
+syscall_handler (struct intr_frame *f)
 {
+  _f = f;
+  thread_current()->esp = _f->esp;
   int syscall_number = 0;
   int args[3] = {0,0,0};
 

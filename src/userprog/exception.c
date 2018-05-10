@@ -1,16 +1,26 @@
 #include "userprog/exception.h"
 #include <inttypes.h>
 #include <stdio.h>
+#include "lib/round.h"
 #include "userprog/gdt.h"
 #include "userprog/syscall.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "lib/kernel/hash.h"
+#include "vm/page.h"
+#include "threads/vaddr.h"
+#include "vm/frame.h"
+#include <string.h>
+#include "userprog/pagedir.h"
+#include "userprog/process.h"
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
 
 static void kill (struct intr_frame *);
 static void page_fault (struct intr_frame *);
+
+bool is_stack_grow_valid(void* fault_addr, void* esp);
 
 /* Registers handlers for interrupts that can be caused by user
    programs.
@@ -28,7 +38,7 @@ static void page_fault (struct intr_frame *);
    Refer to [IA32-v3a] section 5.15 "Exception and Interrupt
    Reference" for a description of each of these exceptions. */
 void
-exception_init (void) 
+exception_init (void)
 {
   /* These exceptions can be raised explicitly by a user program,
      e.g. via the INT, INT3, INTO, and BOUND instructions.  Thus,
@@ -63,14 +73,14 @@ exception_init (void)
 
 /* Prints exception statistics. */
 void
-exception_print_stats (void) 
+exception_print_stats (void)
 {
   printf ("Exception: %lld page faults\n", page_fault_cnt);
 }
 
 /* Handler for an exception (probably) caused by a user process. */
 static void
-kill (struct intr_frame *f) 
+kill (struct intr_frame *f)
 {
   /* This interrupt is one (probably) caused by a user process.
      For example, the process might have tried to access unmapped
@@ -79,7 +89,7 @@ kill (struct intr_frame *f)
      the kernel.  Real Unix-like operating systems pass most
      exceptions back to the process via signals, but we don't
      implement them. */
-     
+
   /* The interrupt frame's code segment value tells us where the
      exception originated. */
   switch (f->cs)
@@ -91,6 +101,7 @@ kill (struct intr_frame *f)
               thread_name (), f->vec_no, intr_name (f->vec_no));
       intr_dump_frame (f);
       sys_exit(-1, 0, 0);
+      __attribute__((fallthrough));
 
     case SEL_KCSEG:
       /* Kernel's code segment, which indicates a kernel bug.
@@ -98,7 +109,7 @@ kill (struct intr_frame *f)
          may cause kernel exceptions--but they shouldn't arrive
          here.)  Panic the kernel to make the point.  */
       intr_dump_frame (f);
-      PANIC ("Kernel bug - unexpected interrupt in kernel"); 
+      PANIC ("Kernel bug - unexpected interrupt in kernel");
 
     default:
       /* Some other code segment?  Shouldn't happen.  Panic the
@@ -121,7 +132,7 @@ kill (struct intr_frame *f)
    description of "Interrupt 14--Page Fault Exception (#PF)" in
    [IA32-v3a] section 5.15 "Exception and Interrupt Reference". */
 static void
-page_fault (struct intr_frame *f) 
+page_fault (struct intr_frame *f)
 {
   bool not_present;  /* True: not-present page, false: writing r/o page. */
   bool write;        /* True: access was write, false: access was read. */
@@ -149,23 +160,97 @@ page_fault (struct intr_frame *f)
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
 
-  /* To implement virtual memory, delete the rest of the function
-     body, and replace it with code that brings in the page to
-     which fault_addr refers. */
-  printf ("Page fault at %p: %s error %s page in %s context.\n",
-          fault_addr,
-          not_present ? "not present" : "rights violation",
-          write ? "writing" : "reading",
-          user ? "user" : "kernel");
-  if(user)
-  {
-    kill (f);
-  }
-  // Page faults in kernel shouldn't kill the thread - see manual p.27
+  //TODO: remove this - keeping for debugging
+  // printf ("Page fault at %p: %s error %s page in %s context.\n",
+  //         fault_addr,
+  //         not_present ? "not present" : "rights violation",
+  //         write ? "writing" : "reading",
+  //         user ? "user" : "kernel");
+
+  bool valid_fault = true;
+  void *esp = user ? f->esp : thread_current()->esp;
+
+  // Various immediately apparent invalid faults
+  if(!not_present || esp < PHYS_BASE-(1024*1024*8))
+    valid_fault = false;
+
+  // Paging
   else
   {
-    f->eip = (void*)f->eax;
-    f->eax = 0xffffffff;
+    struct thread *t = thread_current ();
+    struct s_page_entry temp_spe;
+    struct hash_elem *e;
+
+    temp_spe.addr = (void*)ROUND_DOWN((unsigned)fault_addr, (unsigned)PGSIZE);
+    e = hash_find(&t->s_page_table, &temp_spe.hash_elem);
+    if (e)
+    {
+      struct s_page_entry *spe = hash_entry(e ,struct s_page_entry, hash_elem);
+      if(write && !spe->writable)
+        valid_fault = false;
+      else
+      {
+        if (spe->in_frame) {
+          PANIC ("page fault but frame should exist");
+        }
+
+        else if (spe->in_swap) {
+          //TODO: Swap code
+        }
+
+        else if (spe->in_file) {
+          /* Get a page of memory. */
+          uint8_t *kpage = get_frame (0, spe->addr, t);
+
+          /* Load this page. */
+          file_seek (spe->file, spe->ofs);
+          if (file_read (spe->file, kpage, spe->read_bytes) != (int) spe->read_bytes)
+          {
+            free_frame (kpage);
+          }
+
+          size_t page_zero_bytes = PGSIZE - spe->read_bytes;
+          memset (kpage + spe->read_bytes, 0, page_zero_bytes);
+
+          /* Add the page to the process's address space. */
+          if (!(pagedir_get_page (t->pagedir, spe->addr) == NULL
+                  && pagedir_set_page (t->pagedir, spe->addr, kpage, spe->writable)))
+          {
+            free_frame (kpage);
+          }
+
+          //Update update s_page_entry
+          spe->in_frame = true;
+          spe->in_file = false;
+          spe->frame_addr = kpage;
+        }
+      }
+    }
+
+    // Stack growth
+    else if (fault_addr >= esp - 32)
+    {
+      void* upage = (void*)ROUND_DOWN((unsigned)fault_addr, (unsigned)PGSIZE);
+      uint8_t *kpage = get_frame (0, upage, t);
+      struct s_page_entry * spage = init_stack_entry(upage, kpage);
+      hash_insert (&t->s_page_table, &spage->hash_elem);
+      if(!install_page(upage, kpage, true))
+        PANIC("WOAAAAAH");
+    }
+
+    // Everything else
+    else
+      valid_fault = false;
+  }
+
+  if(!valid_fault)
+  {
+    if(user)
+      kill(f);
+    else
+    {
+      f->eip = (void*)f->eax;
+      f->eax = -1;
+    }
   }
 }
-
