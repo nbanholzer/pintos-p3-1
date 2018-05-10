@@ -203,8 +203,9 @@ page_fault (struct intr_frame *f)
           uint8_t *kpage = get_frame (0, spe->addr, t);
 
           /* Load this page. */
-          file_seek (spe->file, spe->ofs);
-          if (file_read (spe->file, kpage, spe->read_bytes) != (int) spe->read_bytes)
+          // TODO: file system calls need to be protected by a lock
+          // there's one in syscall.c, but we may need to make that more available
+          if (file_read_at (spe->file, kpage, spe->read_bytes, spe->ofs) != (int) spe->read_bytes)
           {
             free_frame (kpage);
           }

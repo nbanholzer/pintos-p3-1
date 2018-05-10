@@ -184,6 +184,8 @@ int sys_exit (int arg0, int arg1 UNUSED, int arg2 UNUSED)
     lock_release(&filesys_lock);
     free(of);
   }
+  
+  // TODO: munmap
 
   // Inform children that parent has exited
   struct list *active_child_processes = &thread_current()->active_child_processes;
@@ -415,7 +417,6 @@ static int sys_mmap (int arg0, int arg1, int arg2 UNUSED)
 
   size_t bytes_to_map = file_length(of->file);
   size_t zero_bytes = ROUND_UP(bytes_to_map, PGSIZE) - bytes_to_map;
-  void *last_page_base = pg_round_down(addr + bytes_to_map);
   unsigned num_pages = (bytes_to_map + zero_bytes) / PGSIZE;
 
   // TODO: remove
@@ -450,7 +451,7 @@ static int sys_mmap (int arg0, int arg1, int arg2 UNUSED)
     addr += PGSIZE;
   }
 
-  return fd;
+  return mf->mapping;
 }
 
 static int sys_munmap (int arg0, int arg1 UNUSED, int arg2 UNUSED)
@@ -460,10 +461,20 @@ static int sys_munmap (int arg0, int arg1 UNUSED, int arg2 UNUSED)
   struct mapped_file *mf = get_mapped_file(mapping);
   if(mf)
   {
-    for(int i = 0; i < mf->num_pages; i++)
+    for(unsigned i = 0; i < mf->num_pages; i++)
     {
       void *addr_to_unmap = mf->base_page + (i * PGSIZE);
       struct s_page_entry *spe = find_page_entry(thread_current(), addr_to_unmap);
+      if(pagedir_is_dirty(thread_current()->pagedir, spe->addr))
+      {
+        lock_acquire(&filesys_lock);
+        // TODO: this is gonna blow up if this thing isn't in a frame
+        unsigned bytes_written = file_write_at(spe->file, spe->frame_addr, spe->read_bytes, spe->ofs);
+        lock_release(&filesys_lock);
+        // TODO: remove
+        // printf("bw: %u\n", bytes_written);
+        // printf("spe->file: %p\n", spe->file);
+      }
       deallocate_page(&spe->hash_elem, thread_current());
     }
     list_remove(&mf->elem);
