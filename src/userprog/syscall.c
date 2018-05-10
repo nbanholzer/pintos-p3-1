@@ -40,6 +40,14 @@ struct open_file
   struct list_elem elem;
 };
 
+struct mapped_file
+{
+  mapid_t mapping;
+  void *base_page;
+  unsigned num_pages;
+  struct list_elem elem;
+};
+
 void
 syscall_init (void)
 {
@@ -135,6 +143,21 @@ static struct open_file* get_open_file (int fd)
       struct open_file *of = list_entry (e, struct open_file, elem);
       if(of->fd == fd)
         return of;
+    }
+  return NULL;
+}
+
+// get a memory mapped file from the thread's list, if it exists
+static struct mapped_file* get_mapped_file (mapid_t mapping)
+{
+  struct list *mapped_files = &thread_current()->mapped_files;
+  struct list_elem *e;
+  for (e = list_begin (mapped_files); e != list_end (mapped_files);
+        e = list_next (e))
+    {
+      struct mapped_file *mf = list_entry (e, struct mapped_file, elem);
+      if(mf->mapping == mapping)
+        return mf;
     }
   return NULL;
 }
@@ -384,14 +407,21 @@ static int sys_mmap (int arg0, int arg1, int arg2 UNUSED)
   void *addr = (void*)arg1;
 
   struct open_file *of = get_open_file(fd);
+
+  // Various failure conditions
   if(!of || !file_length(of->file) || !addr || 
      pg_ofs(addr) || fd == 0 || fd == 1)
     return -1;
 
-  size_t page_bytes = file_length(of->file);
-  void *end_page_base = pg_round_down(addr + page_bytes);
-  unsigned num_pages = pg_no(end_page_base) - pg_no(addr);
+  size_t bytes_to_map = file_length(of->file);
+  size_t zero_bytes = ROUND_UP(bytes_to_map, PGSIZE) - bytes_to_map;
+  void *last_page_base = pg_round_down(addr + bytes_to_map);
+  unsigned num_pages = (bytes_to_map + zero_bytes) / PGSIZE;
 
+  // TODO: remove
+  // printf("btm: %u; zb: %u; np: %u\n", bytes_to_map, zero_bytes, num_pages);
+
+  // Ensure the area requested is not mapped
   for(unsigned i = 0; i < num_pages; i++)
   {
     void *check_addr = addr + (i * PGSIZE);
@@ -399,22 +429,48 @@ static int sys_mmap (int arg0, int arg1, int arg2 UNUSED)
       return -1;
   }
 
-  for(unsigned i = 0; i < pg_no(end_page_base) - pg_no(addr); i++)
+  struct mapped_file *mf = malloc(sizeof(struct mapped_file));
+  mf->mapping = of->fd;
+  mf->base_page = addr;
+  mf->num_pages = num_pages;
+  list_push_back(&thread_current()->mapped_files, &mf->elem);
+
+  off_t offset = 0;
+  while (bytes_to_map > 0 || zero_bytes > 0)
   {
-    void *page_to_map = addr + (i * PGSIZE);
-    
-    struct s_page_entry * spage = init_s_page_entry(page_to_map, of->file, , page_read_bytes, writable);
-    hash_insert (&t->s_page_table, &spage->hash_elem);
+    size_t page_mapped_bytes = bytes_to_map < PGSIZE ? bytes_to_map : PGSIZE;
+    size_t page_zero_bytes = PGSIZE - page_mapped_bytes;
+
+    struct s_page_entry * spage = init_s_page_entry(addr, of->file, offset, page_mapped_bytes, true);
+    hash_insert (&thread_current()->s_page_table, &spage->hash_elem);
+
+    offset += page_mapped_bytes;
+    bytes_to_map -= page_mapped_bytes;
+    zero_bytes -= page_zero_bytes;
+    addr += PGSIZE;
   }
 
-  return 0;
+  return fd;
 }
 
 static int sys_munmap (int arg0, int arg1 UNUSED, int arg2 UNUSED)
 {
-  UNUSED mapid_t fd = arg0;
+  mapid_t mapping = arg0;
 
-  sys_exit(-1, 0, 0);
+  struct mapped_file *mf = get_mapped_file(mapping);
+  if(mf)
+  {
+    for(int i = 0; i < mf->num_pages; i++)
+    {
+      void *addr_to_unmap = mf->base_page + (i * PGSIZE);
+      struct s_page_entry *spe = find_page_entry(thread_current(), addr_to_unmap);
+      deallocate_page(&spe->hash_elem, thread_current());
+    }
+    list_remove(&mf->elem);
+    free(mf);
+  }
+  printf("unmapped??\n");
+  return 0;
 }
 
 // Syscall dispatch table

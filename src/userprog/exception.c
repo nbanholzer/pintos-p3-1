@@ -181,7 +181,7 @@ page_fault (struct intr_frame *f)
     struct s_page_entry temp_spe;
     struct hash_elem *e;
 
-    temp_spe.addr = (void*)ROUND_DOWN((unsigned)fault_addr, (unsigned)PGSIZE);
+    temp_spe.addr = pg_round_down(fault_addr);
     e = hash_find(&t->s_page_table, &temp_spe.hash_elem);
     if (e)
     {
@@ -230,7 +230,7 @@ page_fault (struct intr_frame *f)
     // Stack growth
     else if (fault_addr >= esp - 32)
     {
-      void* upage = (void*)ROUND_DOWN((unsigned)fault_addr, (unsigned)PGSIZE);
+      void* upage = pg_round_down(fault_addr);
       uint8_t *kpage = get_frame (0, upage, t);
       struct s_page_entry * spage = init_stack_entry(upage, kpage);
       hash_insert (&t->s_page_table, &spage->hash_elem);
@@ -245,6 +245,8 @@ page_fault (struct intr_frame *f)
 
   if(!valid_fault)
   {
+    // TODO: remove
+    printf("invalid fault\n");
     if(user)
       kill(f);
     else

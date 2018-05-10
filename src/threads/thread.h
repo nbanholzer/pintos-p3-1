@@ -102,6 +102,7 @@ struct thread
     struct process *process;
     struct list active_child_processes;
     struct list file_descriptors;
+    struct list mapped_files;
     void *esp;
 #endif
 
