@@ -226,7 +226,7 @@ static int sys_exec (int arg0, int arg1 UNUSED, int arg2 UNUSED)
   const char *args = (const char*)arg0;
   
   bool valid = true;
-  for(int i = 0; valid = verify_user((const unsigned char*)(args+i)); i++)
+  for(int i = 0; (valid = verify_user((const unsigned char*)(args+i))); i++)
   {
     if(args[i] == '\0')
       break;
@@ -378,13 +378,24 @@ static int sys_close (int arg0, int arg1 UNUSED, int arg2 UNUSED)
   return 0;
 }
 
-// TODO: implement, remove UNUSED from locals
 static int sys_mmap (int arg0, int arg1, int arg2 UNUSED)
 {
-  UNUSED int fd = arg0;
-  UNUSED void *addr = (void*)arg1;
+  int fd = arg0;
+  void *addr = (void*)arg1;
 
-  sys_exit(-1, 0, 0);
+  struct open_file *of = get_open_file(fd);
+  if(!of || !file_length(of->file) || !addr || 
+     pg_ofs(addr) || fd == 0 || fd == 1)
+    return -1;
+
+  void *end_page_base = pg_round_down(addr + file_length(of->file));
+  for(unsigned i = 0; i < pg_no(end_page_base) - pg_no(addr); i++)
+  {
+    void *check_addr = addr + (i * PGSIZE);
+    if(find_page_entry(thread_current(), check_addr))
+      return -1;
+  }
+
   return 0;
 }
 
