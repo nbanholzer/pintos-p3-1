@@ -74,6 +74,7 @@ deallocate_page(struct hash_elem *element, void *aux)
     //printf("debug 6\n");
   }
   // TODO: Swap free
+  hash_delete(&t->s_page_table, &spe->hash_elem);
   free(spe);
   //printf("debug 7\n");
 }

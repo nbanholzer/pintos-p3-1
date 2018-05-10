@@ -181,7 +181,7 @@ page_fault (struct intr_frame *f)
     struct s_page_entry temp_spe;
     struct hash_elem *e;
 
-    temp_spe.addr = (void*)ROUND_DOWN((unsigned)fault_addr, (unsigned)PGSIZE);
+    temp_spe.addr = pg_round_down(fault_addr);
     e = hash_find(&t->s_page_table, &temp_spe.hash_elem);
     if (e)
     {
@@ -203,8 +203,9 @@ page_fault (struct intr_frame *f)
           uint8_t *kpage = get_frame (0, spe->addr, t);
 
           /* Load this page. */
-          file_seek (spe->file, spe->ofs);
-          if (file_read (spe->file, kpage, spe->read_bytes) != (int) spe->read_bytes)
+          // TODO: file system calls need to be protected by a lock
+          // there's one in syscall.c, but we may need to make that more available
+          if (file_read_at (spe->file, kpage, spe->read_bytes, spe->ofs) != (int) spe->read_bytes)
           {
             free_frame (kpage);
           }
@@ -230,7 +231,7 @@ page_fault (struct intr_frame *f)
     // Stack growth
     else if (fault_addr >= esp - 32)
     {
-      void* upage = (void*)ROUND_DOWN((unsigned)fault_addr, (unsigned)PGSIZE);
+      void* upage = pg_round_down(fault_addr);
       uint8_t *kpage = get_frame (0, upage, t);
       struct s_page_entry * spage = init_stack_entry(upage, kpage);
       hash_insert (&t->s_page_table, &spage->hash_elem);
@@ -245,6 +246,8 @@ page_fault (struct intr_frame *f)
 
   if(!valid_fault)
   {
+    // TODO: remove
+    // printf("invalid fault\n");
     if(user)
       kill(f);
     else

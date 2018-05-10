@@ -40,6 +40,14 @@ struct open_file
   struct list_elem elem;
 };
 
+struct mapped_file
+{
+  mapid_t mapping;
+  void *base_page;
+  unsigned num_pages;
+  struct list_elem elem;
+};
+
 void
 syscall_init (void)
 {
@@ -139,6 +147,102 @@ static struct open_file* get_open_file (int fd)
   return NULL;
 }
 
+// get a memory mapped file from the thread's list, if it exists
+static struct mapped_file* get_mapped_file (mapid_t mapping)
+{
+  struct list *mapped_files = &thread_current()->mapped_files;
+  struct list_elem *e;
+  for (e = list_begin (mapped_files); e != list_end (mapped_files);
+        e = list_next (e))
+    {
+      struct mapped_file *mf = list_entry (e, struct mapped_file, elem);
+      if(mf->mapping == mapping)
+        return mf;
+    }
+  return NULL;
+}
+
+static int sys_mmap (int arg0, int arg1, int arg2 UNUSED)
+{
+  int fd = arg0;
+  void *addr = (void*)arg1;
+
+  struct open_file *of = get_open_file(fd);
+
+  // Various failure conditions
+  if(!of || !file_length(of->file) || !addr || 
+     pg_ofs(addr) || fd == 0 || fd == 1)
+    return -1;
+
+  size_t bytes_to_map = file_length(of->file);
+  size_t zero_bytes = ROUND_UP(bytes_to_map, PGSIZE) - bytes_to_map;
+  unsigned num_pages = (bytes_to_map + zero_bytes) / PGSIZE;
+
+  // TODO: remove
+  // printf("btm: %u; zb: %u; np: %u\n", bytes_to_map, zero_bytes, num_pages);
+
+  // Ensure the area requested is not mapped
+  for(unsigned i = 0; i < num_pages; i++)
+  {
+    void *check_addr = addr + (i * PGSIZE);
+    if(find_page_entry(thread_current(), check_addr))
+      return -1;
+  }
+
+  struct mapped_file *mf = malloc(sizeof(struct mapped_file));
+  mf->mapping = of->fd;
+  mf->base_page = addr;
+  mf->num_pages = num_pages;
+  list_push_back(&thread_current()->mapped_files, &mf->elem);
+
+  off_t offset = 0;
+  while (bytes_to_map > 0 || zero_bytes > 0)
+  {
+    size_t page_mapped_bytes = bytes_to_map < PGSIZE ? bytes_to_map : PGSIZE;
+    size_t page_zero_bytes = PGSIZE - page_mapped_bytes;
+
+    struct s_page_entry * spage = init_s_page_entry(addr, of->file, offset, page_mapped_bytes, true);
+    hash_insert (&thread_current()->s_page_table, &spage->hash_elem);
+
+    offset += page_mapped_bytes;
+    bytes_to_map -= page_mapped_bytes;
+    zero_bytes -= page_zero_bytes;
+    addr += PGSIZE;
+  }
+
+  return mf->mapping;
+}
+
+static int sys_munmap (int arg0, int arg1 UNUSED, int arg2 UNUSED)
+{
+  mapid_t mapping = arg0;
+
+  struct mapped_file *mf = get_mapped_file(mapping);
+  if(mf)
+  {
+    for(unsigned i = 0; i < mf->num_pages; i++)
+    {
+      void *addr_to_unmap = mf->base_page + (i * PGSIZE);
+      struct s_page_entry *spe = find_page_entry(thread_current(), addr_to_unmap);
+      if(pagedir_is_dirty(thread_current()->pagedir, spe->addr))
+      {
+        lock_acquire(&filesys_lock);
+        // TODO: this is gonna blow up if this thing isn't in a frame
+        unsigned bytes_written = file_write_at(spe->file, spe->frame_addr, spe->read_bytes, spe->ofs);
+        lock_release(&filesys_lock);
+        // TODO: remove
+        // printf("rb: %u\n", spe->read_bytes);
+        // printf("bw: %u\n", bytes_written);
+        // printf("spe->file: %p\n", spe->file);
+      }
+      deallocate_page(&spe->hash_elem, thread_current());
+    }
+    list_remove(&mf->elem);
+    free(mf);
+  }
+  return 0;
+}
+
 int sys_exit (int arg0, int arg1 UNUSED, int arg2 UNUSED)
 {
   int status = arg0;
@@ -149,6 +253,15 @@ int sys_exit (int arg0, int arg1 UNUSED, int arg2 UNUSED)
   // when running with USERPROG defined, thread_exit will also call process_exit
   if(lock_held_by_current_thread(&filesys_lock))
     lock_release(&filesys_lock);
+
+  // Unmap memory-mapped files
+  struct list *mapped_files = &thread_current()->mapped_files;
+  while (!list_empty (mapped_files))
+  {
+    struct list_elem *e = list_front (mapped_files);
+    struct mapped_file *mf = list_entry (e, struct mapped_file, elem);
+    sys_munmap(mf->mapping, 0, 0);
+  }
 
   // Free open files
   struct list *file_descriptors = &thread_current()->file_descriptors;
@@ -161,6 +274,7 @@ int sys_exit (int arg0, int arg1 UNUSED, int arg2 UNUSED)
     lock_release(&filesys_lock);
     free(of);
   }
+  
 
   // Inform children that parent has exited
   struct list *active_child_processes = &thread_current()->active_child_processes;
@@ -226,7 +340,7 @@ static int sys_exec (int arg0, int arg1 UNUSED, int arg2 UNUSED)
   const char *args = (const char*)arg0;
   
   bool valid = true;
-  for(int i = 0; valid = verify_user((const unsigned char*)(args+i)); i++)
+  for(int i = 0; (valid = verify_user((const unsigned char*)(args+i))); i++)
   {
     if(args[i] == '\0')
       break;
@@ -376,23 +490,6 @@ static int sys_close (int arg0, int arg1 UNUSED, int arg2 UNUSED)
   }
 
   return 0;
-}
-
-// TODO: implement, remove UNUSED from locals
-static int sys_mmap (int arg0, int arg1, int arg2 UNUSED)
-{
-  UNUSED int fd = arg0;
-  UNUSED void *addr = (void*)arg1;
-
-  sys_exit(-1, 0, 0);
-  return 0;
-}
-
-static int sys_munmap (int arg0, int arg1 UNUSED, int arg2 UNUSED)
-{
-  UNUSED mapid_t fd = arg0;
-
-  sys_exit(-1, 0, 0);
 }
 
 // Syscall dispatch table
