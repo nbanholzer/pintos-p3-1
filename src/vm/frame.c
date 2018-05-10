@@ -27,9 +27,18 @@ void init_frame_table()
 
   //Allocates user pool and stores page address in kpage
   for (size_t i = 0; i < user_pool_size; i++) {
-    frame_table.frame_list[i].kpage = palloc_get_page(PAL_USER);
+    void* kp;
+    kp = frame_table.frame_list[i].kpage = palloc_get_page(PAL_USER);
+    lock_init(&frame_table.frame_list[i].lock);
   }
   //init_swap_table();
+}
+
+struct lock *get_frame_lock(void *frame)
+{
+  // NOTE: this should be what you need to get a frame index
+  unsigned frame_idx = pg_no(frame) - pg_no(frame_table.frame_list[0].kpage);
+  return &frame_table.frame_list[frame_idx].lock;
 }
 
 void *get_frame(enum frame_flags flags, void* upage, struct thread * t)
@@ -46,12 +55,16 @@ void *get_frame_multiple(enum frame_flags flags, size_t frame_cnt, void* upage, 
   if (frame_idx == BITMAP_ERROR){
     PANIC("No frames remaining");
   }
-  //update upage
-  frame_table.frame_list[frame_idx].upage = upage;
-  frame_table.frame_list[frame_idx].t = t;
   lock_release(&frame_table.lock);
+
+  //update upage
+  struct frame *f = &frame_table.frame_list[frame_idx];
+  lock_acquire(&f->lock);
+  f->upage = upage;
+  f->t = t;
+  lock_release(&f->lock);
   //do we ever call get_frame_multiple?
-  return frame_table.frame_list[frame_idx].kpage;
+  return f->kpage;
 }
 
 void free_frame(void *frame)
@@ -68,7 +81,9 @@ void free_frame_multiple(void *frames, size_t frame_cnt)
 #endif
 
   ASSERT (bitmap_all (frame_table.used_map, frame_idx, frame_cnt));
+  lock_acquire(&frame_table.lock);
   bitmap_set_multiple (frame_table.used_map, frame_idx, frame_cnt, false);
+  lock_release(&frame_table.lock);
 }
 
 void

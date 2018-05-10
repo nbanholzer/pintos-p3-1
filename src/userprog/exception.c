@@ -203,8 +203,10 @@ page_fault (struct intr_frame *f)
           uint8_t *kpage = get_frame (0, spe->addr, t);
 
           /* Load this page. */
-          // TODO: file system calls need to be protected by a lock
-          // there's one in syscall.c, but we may need to make that more available
+          struct lock *frame_lock = get_frame_lock(kpage);
+          lock_acquire(frame_lock);
+          lock_acquire(thread_current()->filesys_lock);
+
           if (file_read_at (spe->file, kpage, spe->read_bytes, spe->ofs) != (int) spe->read_bytes)
           {
             free_frame (kpage);
@@ -212,6 +214,9 @@ page_fault (struct intr_frame *f)
 
           size_t page_zero_bytes = PGSIZE - spe->read_bytes;
           memset (kpage + spe->read_bytes, 0, page_zero_bytes);
+
+          lock_release(thread_current()->filesys_lock);
+          lock_release(frame_lock);
 
           /* Add the page to the process's address space. */
           if (!(pagedir_get_page (t->pagedir, spe->addr) == NULL

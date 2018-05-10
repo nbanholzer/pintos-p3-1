@@ -26,10 +26,6 @@ enum user_access_type
   USER_READ, USER_WRITE
 };
 
-// Lock required for making calls into filesys. Concurrency
-// is not supported for those calls
-static struct lock filesys_lock;
-
 // TODO: this is just going to keep increasing, which would ultimately
 // break on integer overflow, though that probably won't happen
 static int fd = 2;
@@ -52,7 +48,6 @@ void
 syscall_init (void)
 {
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
-  lock_init(&filesys_lock);
 }
 
 
@@ -226,10 +221,10 @@ static int sys_munmap (int arg0, int arg1 UNUSED, int arg2 UNUSED)
       struct s_page_entry *spe = find_page_entry(thread_current(), addr_to_unmap);
       if(pagedir_is_dirty(thread_current()->pagedir, spe->addr))
       {
-        lock_acquire(&filesys_lock);
+        lock_acquire(thread_current()->filesys_lock);
         // TODO: this is gonna blow up if this thing isn't in a frame
         unsigned bytes_written = file_write_at(spe->file, spe->frame_addr, spe->read_bytes, spe->ofs);
-        lock_release(&filesys_lock);
+        lock_release(thread_current()->filesys_lock);
         // TODO: remove
         // printf("rb: %u\n", spe->read_bytes);
         // printf("bw: %u\n", bytes_written);
@@ -251,8 +246,8 @@ int sys_exit (int arg0, int arg1 UNUSED, int arg2 UNUSED)
   printf("%s: exit(%d)\n", thread_current()->name, status);
 
   // when running with USERPROG defined, thread_exit will also call process_exit
-  if(lock_held_by_current_thread(&filesys_lock))
-    lock_release(&filesys_lock);
+  if(lock_held_by_current_thread(thread_current()->filesys_lock))
+    lock_release(thread_current()->filesys_lock);
 
   // Unmap memory-mapped files
   struct list *mapped_files = &thread_current()->mapped_files;
@@ -269,9 +264,9 @@ int sys_exit (int arg0, int arg1 UNUSED, int arg2 UNUSED)
   {
     struct list_elem *e = list_pop_front (file_descriptors);
     struct open_file *of = list_entry (e, struct open_file, elem);
-    lock_acquire(&filesys_lock);
+    lock_acquire(thread_current()->filesys_lock);
     file_close(of->file);
-    lock_release(&filesys_lock);
+    lock_release(thread_current()->filesys_lock);
     free(of);
   }
   
@@ -322,9 +317,9 @@ static int sys_write (int arg0, int arg1, int arg2)
       free(kernel_buffer);
       sys_exit(-1, 0, 0);
     }
-    lock_acquire(&filesys_lock);
+    lock_acquire(thread_current()->filesys_lock);
     bytes_written = file_write(of->file, kernel_buffer, length);
-    lock_release(&filesys_lock);
+    lock_release(thread_current()->filesys_lock);
   }
 
   return bytes_written;
@@ -367,9 +362,9 @@ static int sys_create (int arg0, int arg1, int arg2 UNUSED)
   if(!file || !verify_user((const unsigned char*)file))
     sys_exit(-1, 0, 0);
 
-  lock_acquire(&filesys_lock);
+  lock_acquire(thread_current()->filesys_lock);
   success = filesys_create(file, initial_size);
-  lock_release(&filesys_lock);
+  lock_release(thread_current()->filesys_lock);
 
   return success;
 }
@@ -382,9 +377,9 @@ static int sys_remove (int arg0, int arg1 UNUSED, int arg2 UNUSED)
   if(!file || !verify_user((const unsigned char*)file))
     sys_exit(-1, 0, 0);
 
-  lock_acquire(&filesys_lock);
+  lock_acquire(thread_current()->filesys_lock);
   success = filesys_remove(file);
-  lock_release(&filesys_lock);
+  lock_release(thread_current()->filesys_lock);
 
   return success;
 }
@@ -397,9 +392,9 @@ static int sys_open (int arg0, int arg1 UNUSED, int arg2 UNUSED)
     sys_exit(-1, 0, 0);
 
   struct file *f;
-  lock_acquire(&filesys_lock);
+  lock_acquire(thread_current()->filesys_lock);
   f = filesys_open(file);
-  lock_release(&filesys_lock);
+  lock_release(thread_current()->filesys_lock);
 
   if(!f)
     return -1;
@@ -443,9 +438,9 @@ static int sys_read (int arg0, int arg1, int arg2)
       return -1;
 
     kernel_buffer = malloc(length);
-    lock_acquire(&filesys_lock);
+    lock_acquire(thread_current()->filesys_lock);
     bytes_read = file_read(of->file, kernel_buffer, length);
-    lock_release(&filesys_lock);
+    lock_release(thread_current()->filesys_lock);
 
     if(!access_user_data(buffer, kernel_buffer, bytes_read, USER_WRITE))
     {

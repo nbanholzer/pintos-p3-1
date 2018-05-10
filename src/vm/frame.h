@@ -24,6 +24,7 @@ struct frame
   void *upage;
   void *kpage;
   struct thread *t;
+  struct lock lock;
 };
 
 void init_frame_table(void);
