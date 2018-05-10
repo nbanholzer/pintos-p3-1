@@ -246,7 +246,7 @@ page_fault (struct intr_frame *f)
   if(!valid_fault)
   {
     // TODO: remove
-    printf("invalid fault\n");
+    // printf("invalid fault\n");
     if(user)
       kill(f);
     else

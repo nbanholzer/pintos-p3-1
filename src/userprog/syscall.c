@@ -469,7 +469,6 @@ static int sys_munmap (int arg0, int arg1 UNUSED, int arg2 UNUSED)
     list_remove(&mf->elem);
     free(mf);
   }
-  printf("unmapped??\n");
   return 0;
 }
 
