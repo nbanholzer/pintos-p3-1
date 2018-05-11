@@ -197,6 +197,7 @@ page_fault (struct intr_frame *f)
         else if (spe->in_swap) {
           uint8_t *kpage = get_frame (0, spe->addr, t);
           if (kpage == NULL) {
+            //printf("debug in_swap\n");
             return;
           }
           /* Load this page. */
@@ -213,11 +214,12 @@ page_fault (struct intr_frame *f)
           {
             free_frame (kpage);
           }
-
+          else{
           //Update update s_page_entry
-          spe->in_frame = true;
-          spe->in_swap = false;
-          spe->frame_addr = kpage;
+            spe->in_frame = true;
+            spe->in_swap = false;
+            spe->frame_addr = kpage;
+          }
           lock_release(frame_lock);
         }
 
@@ -225,6 +227,7 @@ page_fault (struct intr_frame *f)
           /* Get a page of memory. */
           uint8_t *kpage = get_frame (0, spe->addr, t);
           if (kpage == NULL) {
+            //printf("debug in_file\n");
             return;
           }
 

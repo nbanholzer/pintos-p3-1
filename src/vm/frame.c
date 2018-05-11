@@ -48,28 +48,35 @@ void *get_frame(enum frame_flags flags, void* upage, struct thread * t)
 
 void *get_frame_multiple(enum frame_flags flags, size_t frame_cnt, void* upage, struct thread * t)
 {
-  int frame_idx;
-
+  size_t frame_idx;
+  //printf("Acquire, get_frame\n");
   lock_acquire(&frame_table.lock);
   frame_idx = bitmap_scan_and_flip (frame_table.used_map, 0, frame_cnt, false);
+  //printf("test_frame_bool: %u\n", bitmap_test(&frame_table.used_map, 2));
+  //printf("test_frame_idx: %u\n", frame_idx);
   if (frame_idx == BITMAP_ERROR){
-    //printf("call eviction_routine");
-    frame_idx = eviction_routine();
-    if (frame_idx == -1) {
+    //printf("call eviction_routine\n");
+    int evict_check = eviction_routine();
+    //printf("Eviction return: %i\n", evict_check);
+    if (evict_check == -1) {
+      //printf("Release, get_frame\n");
       lock_release(&frame_table.lock);
       return NULL;
     }
     else{
       frame_idx = bitmap_scan_and_flip (frame_table.used_map, 0, frame_cnt, false);
+      //printf("frame idx: %u\n", frame_idx);
     }
   }
-  lock_release(&frame_table.lock);
-
-  //update upage
   struct frame *f = &frame_table.frame_list[frame_idx];
   lock_acquire(&f->lock);
+  //printf("Release, get_frame\n");
+
+  //update upage
   f->upage = upage;
+  //printf("upage: %p\n", upage );
   f->t = t;
+  lock_release(&frame_table.lock);
   lock_release(&f->lock);
   //do we ever call get_frame_multiple?
   return f->kpage;
@@ -83,7 +90,8 @@ void free_frame(void *frame)
 void free_frame_multiple(void *frames, size_t frame_cnt)
 {
   size_t frame_idx = pg_no (frames) - pg_no (frame_table.frame_list[0].kpage);
-  frame_table.frame_list[0].upage = NULL;
+  //printf("Old Upage: %p\n", );
+  frame_table.frame_list[frame_idx].upage = NULL;
 
 #ifndef NDEBUG
   memset (frames, 0xcc, PGSIZE * frame_cnt);
@@ -91,6 +99,7 @@ void free_frame_multiple(void *frames, size_t frame_cnt)
   //lock_acquire(&frame_table.lock);
   ASSERT (bitmap_all (frame_table.used_map, frame_idx, frame_cnt));
   bitmap_set_multiple (frame_table.used_map, frame_idx, frame_cnt, false);
+  //printf("free_frame1: %u\n", frame_idx);
   //lock_release(&frame_table.lock);
 
 }
@@ -98,18 +107,24 @@ void free_frame_multiple(void *frames, size_t frame_cnt)
 void
 evict(struct frame *frame)
 {
+  //printf("debug1\n");
   struct s_page_entry * spe = find_page_entry(frame->t, frame->upage);
+  //printf("debug2\n");
   uint32_t * pd = frame->t->pagedir;
-
+  //printf("debug3\n");
+  //printf("upage: %p\n", frame->upage);
   //want to set to read from file if not directory
   if(!pagedir_is_dirty(pd, frame->upage) && (spe->file != NULL)){
+    //printf("debug4\n");
     pagedir_clear_page(pd, frame->upage);
     free_frame(frame->kpage);
     spe->in_file = true;
     spe->in_frame = false;
     spe->frame_addr = NULL;
+    //printf("debug5\n");
   }
   else{
+    //printf("debug6\n");
     size_t swap_idx= swap_write(frame);
     spe->in_swap = true;
     spe->in_frame = false;
@@ -117,6 +132,7 @@ evict(struct frame *frame)
     spe->swap_idx = swap_idx;
     pagedir_clear_page(pd, frame->upage);
     free_frame(frame->kpage);
+    //printf("debug7\n");
   }
   return;
 }

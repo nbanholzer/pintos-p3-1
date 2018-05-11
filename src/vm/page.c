@@ -71,7 +71,11 @@ deallocate_page(struct hash_elem *element, void *aux)
   if(spe->in_frame){
     //printf("debug 5\n");
     pagedir_clear_page(t->pagedir, spe->addr);
+    //printf("Acquire, deallocate page\n");
+    lock_acquire(get_frame_lock(spe->frame_addr));
     free_frame(spe->frame_addr);
+    //printf("Release, deallocate page\n");
+    lock_release(get_frame_lock(spe->frame_addr));
     //printf("debug 6\n");
   }
   if(spe->in_swap){
