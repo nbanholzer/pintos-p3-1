@@ -13,6 +13,7 @@
 #include <debug.h>
 #include "userprog/pagedir.h"
 #include "lib/round.h"
+#include "vm/swap.h"
 
 struct s_page_entry*
 init_s_page_entry(uint8_t *u_addr, struct file *file, off_t ofs, size_t read_bytes, bool writable)
@@ -73,7 +74,9 @@ deallocate_page(struct hash_elem *element, void *aux)
     free_frame(spe->frame_addr);
     //printf("debug 6\n");
   }
-  // TODO: Swap free
+  if(spe->in_swap){
+    swap_free(spe->swap_idx);
+  }
   hash_delete(&t->s_page_table, &spe->hash_elem);
   free(spe);
   //printf("debug 7\n");

@@ -195,12 +195,37 @@ page_fault (struct intr_frame *f)
         }
 
         else if (spe->in_swap) {
-          //TODO: Swap code
+          uint8_t *kpage = get_frame (0, spe->addr, t);
+          if (kpage == NULL) {
+            return;
+          }
+          /* Load this page. */
+          struct lock *frame_lock = get_frame_lock(kpage);
+          lock_acquire(frame_lock);
+
+          //Read in from swap_idx
+          swap_read(kpage, spe->swap_idx);
+          swap_free(spe->swap_idx);
+
+          /* Add the page to the process's address space. */
+          if (!(pagedir_get_page (t->pagedir, spe->addr) == NULL
+                  && pagedir_set_page (t->pagedir, spe->addr, kpage, spe->writable)))
+          {
+            free_frame (kpage);
+          }
+
+          //Update update s_page_entry
+          spe->in_frame = true;
+          spe->in_swap = false;
+          spe->frame_addr = kpage;
         }
 
         else if (spe->in_file) {
           /* Get a page of memory. */
           uint8_t *kpage = get_frame (0, spe->addr, t);
+          if (kpage == NULL) {
+            return;
+          }
 
           /* Load this page. */
           struct lock *frame_lock = get_frame_lock(kpage);
@@ -238,6 +263,9 @@ page_fault (struct intr_frame *f)
     {
       void* upage = pg_round_down(fault_addr);
       uint8_t *kpage = get_frame (0, upage, t);
+      if (kpage == NULL) {
+        return;
+      }
       struct s_page_entry * spage = init_stack_entry(upage, kpage);
       hash_insert (&t->s_page_table, &spage->hash_elem);
       if(!install_page(upage, kpage, true))

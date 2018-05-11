@@ -31,7 +31,7 @@ void init_frame_table()
     kp = frame_table.frame_list[i].kpage = palloc_get_page(PAL_USER);
     lock_init(&frame_table.frame_list[i].lock);
   }
-  //init_swap_table();
+  init_swap_table();
 }
 
 struct lock *get_frame_lock(void *frame)
@@ -48,12 +48,19 @@ void *get_frame(enum frame_flags flags, void* upage, struct thread * t)
 
 void *get_frame_multiple(enum frame_flags flags, size_t frame_cnt, void* upage, struct thread * t)
 {
-  size_t frame_idx;
+  int frame_idx;
 
   lock_acquire(&frame_table.lock);
   frame_idx = bitmap_scan_and_flip (frame_table.used_map, 0, frame_cnt, false);
   if (frame_idx == BITMAP_ERROR){
-    PANIC("No frames remaining");
+    frame_idx = eviction_routine();
+    if (frame_idx == -1) {
+      lock_release(&frame_table.lock);
+      return NULL;
+    }
+    else{
+      frame_idx = bitmap_scan_and_flip (frame_table.used_map, 0, frame_cnt, false);
+    }
   }
   lock_release(&frame_table.lock);
 
@@ -75,13 +82,13 @@ void free_frame(void *frame)
 void free_frame_multiple(void *frames, size_t frame_cnt)
 {
   size_t frame_idx = pg_no (frames) - pg_no (frame_table.frame_list[0].kpage);
+  //printf("%u\n", frame_idx);
 
 #ifndef NDEBUG
   memset (frames, 0xcc, PGSIZE * frame_cnt);
 #endif
-
-  ASSERT (bitmap_all (frame_table.used_map, frame_idx, frame_cnt));
   lock_acquire(&frame_table.lock);
+  ASSERT (bitmap_all (frame_table.used_map, frame_idx, frame_cnt));
   bitmap_set_multiple (frame_table.used_map, frame_idx, frame_cnt, false);
   lock_release(&frame_table.lock);
 }
@@ -94,6 +101,7 @@ evict(struct frame *frame)
 
   //want to set to read from file if not directory
   if(!pagedir_is_dirty(pd, frame->upage) && (spe->file != NULL)){
+    pagedir_clear_page(pd, frame->upage);
     free_frame(frame);
     spe->in_file = true;
     spe->in_frame = false;
