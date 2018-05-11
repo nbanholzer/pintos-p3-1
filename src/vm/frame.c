@@ -53,6 +53,7 @@ void *get_frame_multiple(enum frame_flags flags, size_t frame_cnt, void* upage, 
   lock_acquire(&frame_table.lock);
   frame_idx = bitmap_scan_and_flip (frame_table.used_map, 0, frame_cnt, false);
   if (frame_idx == BITMAP_ERROR){
+    //printf("call eviction_routine");
     frame_idx = eviction_routine();
     if (frame_idx == -1) {
       lock_release(&frame_table.lock);
@@ -82,15 +83,16 @@ void free_frame(void *frame)
 void free_frame_multiple(void *frames, size_t frame_cnt)
 {
   size_t frame_idx = pg_no (frames) - pg_no (frame_table.frame_list[0].kpage);
-  //printf("%u\n", frame_idx);
+  frame_table.frame_list[0].upage = NULL;
 
 #ifndef NDEBUG
   memset (frames, 0xcc, PGSIZE * frame_cnt);
 #endif
-  lock_acquire(&frame_table.lock);
+  //lock_acquire(&frame_table.lock);
   ASSERT (bitmap_all (frame_table.used_map, frame_idx, frame_cnt));
   bitmap_set_multiple (frame_table.used_map, frame_idx, frame_cnt, false);
-  lock_release(&frame_table.lock);
+  //lock_release(&frame_table.lock);
+
 }
 
 void
@@ -102,7 +104,7 @@ evict(struct frame *frame)
   //want to set to read from file if not directory
   if(!pagedir_is_dirty(pd, frame->upage) && (spe->file != NULL)){
     pagedir_clear_page(pd, frame->upage);
-    free_frame(frame);
+    free_frame(frame->kpage);
     spe->in_file = true;
     spe->in_frame = false;
     spe->frame_addr = NULL;
@@ -113,7 +115,8 @@ evict(struct frame *frame)
     spe->in_frame = false;
     spe->frame_addr = NULL;
     spe->swap_idx = swap_idx;
-    free_frame(frame);
+    pagedir_clear_page(pd, frame->upage);
+    free_frame(frame->kpage);
   }
   return;
 }
@@ -124,18 +127,26 @@ eviction_routine(){
   uint32_t * pd;
   void * page;
   for (size_t i = 0; i < size; i++) {
+    bool lock_check = lock_try_acquire(&frame_table.frame_list[i].lock);
     pd = frame_table.frame_list[i].t->pagedir;
     page = frame_table.frame_list[i].upage;
-    if (!pagedir_is_accessed(pd, page)) {
+    printf("debug1\n");
+    printf("%p\n", page);
+    if (lock_check && !pagedir_is_accessed(pd, page)) {
       evict(&frame_table.frame_list[i]);
+      lock_release(&frame_table.frame_list[i].lock);
       return (int)i;
     }
+    lock_release(&frame_table.frame_list[i].lock);
+    printf("debug2\n");
   }
   //no unaccessed frames found
   for (size_t i = 0; i < size; i++) {
     pd = frame_table.frame_list[i].t->pagedir;
     page = frame_table.frame_list[i].upage;
+    printf("debug3\n");
     pagedir_set_accessed(pd, page, false);
+    printf("debug4\n");
   }
   return -1;
 }
