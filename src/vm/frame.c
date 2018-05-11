@@ -130,23 +130,23 @@ eviction_routine(){
     bool lock_check = lock_try_acquire(&frame_table.frame_list[i].lock);
     pd = frame_table.frame_list[i].t->pagedir;
     page = frame_table.frame_list[i].upage;
-    printf("debug1\n");
-    printf("%p\n", page);
+    //printf("debug1\n");
+    //printf("%p\n", page);
     if (lock_check && !pagedir_is_accessed(pd, page)) {
       evict(&frame_table.frame_list[i]);
       lock_release(&frame_table.frame_list[i].lock);
       return (int)i;
     }
     lock_release(&frame_table.frame_list[i].lock);
-    printf("debug2\n");
+    //printf("debug2\n");
   }
   //no unaccessed frames found
   for (size_t i = 0; i < size; i++) {
     pd = frame_table.frame_list[i].t->pagedir;
     page = frame_table.frame_list[i].upage;
-    printf("debug3\n");
+    //printf("debug3\n");
     pagedir_set_accessed(pd, page, false);
-    printf("debug4\n");
+    //printf("debug4\n");
   }
   return -1;
 }

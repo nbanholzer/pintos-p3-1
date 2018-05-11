@@ -161,11 +161,11 @@ page_fault (struct intr_frame *f)
   user = (f->error_code & PF_U) != 0;
 
   //TODO: remove this - keeping for debugging
-  printf ("Page fault at %p: %s error %s page in %s context.\n",
-          fault_addr,
-          not_present ? "not present" : "rights violation",
-          write ? "writing" : "reading",
-          user ? "user" : "kernel");
+  // printf ("Page fault at %p: %s error %s page in %s context.\n",
+  //         fault_addr,
+  //         not_present ? "not present" : "rights violation",
+  //         write ? "writing" : "reading",
+  //         user ? "user" : "kernel");
 
   bool valid_fault = true;
   void *esp = user ? f->esp : thread_current()->esp;
@@ -250,11 +250,12 @@ page_fault (struct intr_frame *f)
           {
             free_frame (kpage);
           }
-
+          else{
           //Update update s_page_entry
-          spe->in_frame = true;
-          spe->in_file = false;
-          spe->frame_addr = kpage;
+            spe->in_frame = true;
+            spe->in_file = false;
+            spe->frame_addr = kpage;
+          }
           lock_release(frame_lock);
         }
       }
