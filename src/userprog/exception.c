@@ -196,18 +196,18 @@ page_fault (struct intr_frame *f)
 
         else if (spe->in_swap) {
           uint8_t *kpage = get_frame (0, spe->addr, t);
+          //printf("debug in_swap1\n");
           if (kpage == NULL) {
-            //printf("debug in_swap\n");
             return;
           }
           /* Load this page. */
           struct lock *frame_lock = get_frame_lock(kpage);
           lock_acquire(frame_lock);
-
+          //printf("debug in_swap2\n");
           //Read in from swap_idx
           swap_read(kpage, spe->swap_idx);
           swap_free(spe->swap_idx);
-
+          //printf("debug in_swap3\n");
           /* Add the page to the process's address space. */
           if (!(pagedir_get_page (t->pagedir, spe->addr) == NULL
                   && pagedir_set_page (t->pagedir, spe->addr, kpage, spe->writable)))
@@ -220,6 +220,7 @@ page_fault (struct intr_frame *f)
             spe->in_swap = false;
             spe->frame_addr = kpage;
           }
+          //printf("debug in_swap4\n");
           lock_release(frame_lock);
         }
 
@@ -286,7 +287,7 @@ page_fault (struct intr_frame *f)
   if(!valid_fault)
   {
     // TODO: remove
-    // printf("invalid fault\n");
+    //printf("invalid fault\n");
     if(user)
       kill(f);
     else
@@ -295,4 +296,5 @@ page_fault (struct intr_frame *f)
       f->eax = -1;
     }
   }
+  //printf("exception returns\n");
 }

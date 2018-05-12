@@ -53,7 +53,7 @@ void *get_frame_multiple(enum frame_flags flags, size_t frame_cnt, void* upage, 
   lock_acquire(&frame_table.lock);
   frame_idx = bitmap_scan_and_flip (frame_table.used_map, 0, frame_cnt, false);
   //printf("test_frame_bool: %u\n", bitmap_test(&frame_table.used_map, 2));
-  //printf("test_frame_idx: %u\n", frame_idx);
+  //printf("get_frame_idx: %u\n", frame_idx);
   if (frame_idx == BITMAP_ERROR){
     //printf("call eviction_routine\n");
     int evict_check = eviction_routine();
@@ -74,7 +74,7 @@ void *get_frame_multiple(enum frame_flags flags, size_t frame_cnt, void* upage, 
 
   //update upage
   f->upage = upage;
-  //printf("upage: %p\n", upage );
+  //printf("put upage: %p\n", upage );
   f->t = t;
   lock_release(&frame_table.lock);
   lock_release(&f->lock);
@@ -112,7 +112,7 @@ evict(struct frame *frame)
   //printf("debug2\n");
   uint32_t * pd = frame->t->pagedir;
   //printf("debug3\n");
-  //printf("upage: %p\n", frame->upage);
+  //printf("evict upage: %p\n", frame->upage);
   //want to set to read from file if not directory
   if(!pagedir_is_dirty(pd, frame->upage) && (spe->file != NULL)){
     //printf("debug4\n");
@@ -126,11 +126,11 @@ evict(struct frame *frame)
   else{
     //printf("debug6\n");
     size_t swap_idx= swap_write(frame);
+    pagedir_clear_page(pd, frame->upage);
     spe->in_swap = true;
     spe->in_frame = false;
     spe->frame_addr = NULL;
     spe->swap_idx = swap_idx;
-    pagedir_clear_page(pd, frame->upage);
     free_frame(frame->kpage);
     //printf("debug7\n");
   }
@@ -142,6 +142,7 @@ eviction_routine(){
   size_t size= bitmap_size(frame_table.used_map);
   uint32_t * pd;
   void * page;
+  //printf("in eviction routine\n");
   for (size_t i = 0; i < size; i++) {
     bool lock_check = lock_try_acquire(&frame_table.frame_list[i].lock);
     pd = frame_table.frame_list[i].t->pagedir;
