@@ -161,19 +161,20 @@ page_fault (struct intr_frame *f)
   user = (f->error_code & PF_U) != 0;
 
   //TODO: remove this - keeping for debugging
-  // printf ("Page fault at %p: %s error %s page in %s context.\n",
-  //         fault_addr,
-  //         not_present ? "not present" : "rights violation",
-  //         write ? "writing" : "reading",
-  //         user ? "user" : "kernel");
+  printf ("Page fault at %p: %s error %s page in %s context.\n",
+          fault_addr,
+          not_present ? "not present" : "rights violation",
+          write ? "writing" : "reading",
+          user ? "user" : "kernel");
 
   bool valid_fault = true;
   void *esp = user ? f->esp : thread_current()->esp;
 
   // Various immediately apparent invalid faults
-  if(!not_present || esp < PHYS_BASE-(1024*1024*8))
+  if(!not_present || esp < PHYS_BASE-(1024*1024*8)){
+    //printf("debug1\n");
     valid_fault = false;
-
+  }
   // Paging
   else
   {
@@ -182,12 +183,15 @@ page_fault (struct intr_frame *f)
     struct hash_elem *e;
 
     temp_spe.addr = pg_round_down(fault_addr);
+    //printf("addr%p\n", temp_spe.addr);
     e = hash_find(&t->s_page_table, &temp_spe.hash_elem);
     if (e)
     {
       struct s_page_entry *spe = hash_entry(e ,struct s_page_entry, hash_elem);
-      if(write && !spe->writable)
+      if(write && !spe->writable){
+        //printf("debug2\n");
         valid_fault = false;
+      }
       else
       {
         if (spe->in_frame) {
@@ -280,8 +284,10 @@ page_fault (struct intr_frame *f)
     }
 
     // Everything else
-    else
+    else{
+      //printf("debug3\n");
       valid_fault = false;
+    }
   }
 
   if(!valid_fault)

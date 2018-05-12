@@ -42,6 +42,7 @@ init_stack_entry(uint8_t *u_addr, uint8_t *frame_addr)
   spe->in_swap = false;
   spe->in_file = false;
   spe->writable = true;
+  spe->file = NULL;
   return spe;
 }
 

@@ -114,19 +114,37 @@ evict(struct frame *frame)
   //printf("debug3\n");
   //printf("evict upage: %p\n", frame->upage);
   //want to set to read from file if not directory
-  if(!pagedir_is_dirty(pd, frame->upage) && (spe->file != NULL)){
-    //printf("debug4\n");
+  if(spe->is_mmap && pagedir_is_dirty(pd, frame->upage)){
+    lock_acquire(frame->t->filesys_lock);
+    // TODO: this is gonna blow up if this thing isn't in a frame
+    unsigned bytes_written = file_write_at(spe->file, spe->frame_addr, spe->read_bytes, spe->ofs);
+    lock_release(frame->t->filesys_lock);
     pagedir_clear_page(pd, frame->upage);
+    pagedir_set_accessed(pd, frame->upage, false);
+    pagedir_set_dirty(pd, frame->upage, false);
     free_frame(frame->kpage);
     spe->in_file = true;
     spe->in_frame = false;
     spe->frame_addr = NULL;
+  }
+  else if(!pagedir_is_dirty(pd, frame->upage) && (spe->file != NULL)){
+    //printf("debug4\n");
+    pagedir_clear_page(pd, frame->upage);
+    pagedir_set_accessed(pd, frame->upage, false);
+    pagedir_set_dirty(pd, frame->upage, false);
+    free_frame(frame->kpage);
+    spe->in_file = true;
+    spe->in_frame = false;
+    spe->frame_addr = NULL;
+
     //printf("debug5\n");
   }
   else{
     //printf("debug6\n");
     size_t swap_idx= swap_write(frame);
     pagedir_clear_page(pd, frame->upage);
+    pagedir_set_accessed(pd, frame->upage, false);
+    pagedir_set_dirty(pd, frame->upage, false);
     spe->in_swap = true;
     spe->in_frame = false;
     spe->frame_addr = NULL;

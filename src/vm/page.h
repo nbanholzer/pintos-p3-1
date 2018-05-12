@@ -16,6 +16,7 @@ struct s_page_entry
   bool in_frame;
   bool in_swap;
   bool in_file;
+  bool is_mmap;
   uint8_t *frame_addr;
   struct file *file;
   off_t ofs;
