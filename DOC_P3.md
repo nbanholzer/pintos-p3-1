@@ -130,6 +130,7 @@ In the eviction process the pagedir of process Q is set with pagedir_clear so it
 >> B4: Explain your heuristic for deciding whether a page fault for an
 >> invalid virtual address should cause the stack to be extended into
 >> the page that faulted.
+
 We allow stack growth within 8MB of PHYS_BASE.
 
 ---- SYNCHRONIZATION ----
@@ -164,6 +165,7 @@ This may not be handled properly.
 >> in user programs), or do you have a mechanism for "locking" frames
 >> into physical memory, or do you use some other design?  How do you
 >> gracefully handle attempted accesses to invalid virtual addresses?
+
 This may also not be handled properly. But right now they use page faults to bring in pages.
 
 ---- RATIONALE ----
@@ -174,6 +176,7 @@ This may also not be handled properly. But right now they use page faults to bri
 >> possibility for deadlock but allows for high parallelism.  Explain
 >> where your design falls along this continuum and why you chose to
 >> design it this way.
+
 We have one lock for the frame structure and one lock each per frame. This is more similar to a reader-writers lock and seems to be a good balance of speed and parallelism.
 
 			 MEMORY MAPPED FILES
@@ -200,10 +203,12 @@ This tracks a memory mapped file to facilitate getting the right pages.
 >> C2: Describe how memory mapped files integrate into your virtual
 >> memory subsystem.  Explain how the page fault and eviction
 >> processes differ between swap pages and other pages.
+
 Memory-mapped files work very similarly to the other file-based pages (e.g. the executable). Some extra checking has to be done around the requested addresses, but otherwise they work off the same infrastructure. Additionally, for memory mapped files the pages are written back to the file if they have been edited when they are either unmapped or evicted.
 
 >> C3: Explain how you determine whether a new file mapping overlaps
 >> any existing segment.
+
 We check the supplemental page table to see if the requested addresses have already been mapped.
 
 ---- RATIONALE ----
@@ -214,6 +219,7 @@ We check the supplemental page table to see if the requested addresses have alre
 >> that much of their implementation can be shared.  Explain why your
 >> implementation either does or does not share much of the code for
 >> the two situations.
+
 It shares almost all of the same code - as mentioned above, they operate in nearly the exact same way. The only different is adding a flag to the supplemental page table entry to differentiate between the two, as they operate differently on eviction.
 
 			   SURVEY QUESTIONS
