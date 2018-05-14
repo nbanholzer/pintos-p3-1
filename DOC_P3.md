@@ -200,10 +200,11 @@ This tracks a memory mapped file to facilitate getting the right pages.
 >> C2: Describe how memory mapped files integrate into your virtual
 >> memory subsystem.  Explain how the page fault and eviction
 >> processes differ between swap pages and other pages.
-For memory mapped files the pages are written back to the file if they have been edited instead of to the swap.
+Memory-mapped files work very similarly to the other file-based pages (e.g. the executable). Some extra checking has to be done around the requested addresses, but otherwise they work off the same infrastructure. Additionally, for memory mapped files the pages are written back to the file if they have been edited when they are either unmapped or evicted.
 
 >> C3: Explain how you determine whether a new file mapping overlaps
 >> any existing segment.
+We check the supplemental page table to see if the requested addresses have already been mapped.
 
 ---- RATIONALE ----
 
@@ -213,6 +214,7 @@ For memory mapped files the pages are written back to the file if they have been
 >> that much of their implementation can be shared.  Explain why your
 >> implementation either does or does not share much of the code for
 >> the two situations.
+It shares almost all of the same code - as mentioned above, they operate in nearly the exact same way. The only different is adding a flag to the supplemental page table entry to differentiate between the two, as they operate differently on eviction.
 
 			   SURVEY QUESTIONS
 			   ================
