@@ -125,9 +125,12 @@ checking the accessed
 >> process Q, how do you adjust the page table (and any other data
 >> structures) to reflect the frame Q no longer has?
 
+In the eviction process the pagedir of process Q is set with pagedir_clear so it will fault next time and the supplementary page entry is updated to note whether it is in swap or file.
+
 >> B4: Explain your heuristic for deciding whether a page fault for an
 >> invalid virtual address should cause the stack to be extended into
 >> the page that faulted.
+We allow stack growth within 8MB of PHYS_BASE.
 
 ---- SYNCHRONIZATION ----
 
@@ -136,21 +139,32 @@ checking the accessed
 >> textbook for an explanation of the necessary conditions for
 >> deadlock.)
 
+We have a frame_table lock and a frame structure lock. The frame table
+can't be modified without the frame_table lock and the individual
+frame can't be modified without the frame structure lock. The
+frame_table lock is only held minimally to prevent deadlock.
+
 >> B6: A page fault in process P can cause another process Q's frame
 >> to be evicted.  How do you ensure that Q cannot access or modify
 >> the page during the eviction process?  How do you avoid a race
 >> between P evicting Q's frame and Q faulting the page back in?
+
+Since the frame can only be evicted, or used to page in, if it's lock
+can be acquired this should prevent the race condition.
 
 >> B7: Suppose a page fault in process P causes a page to be read from
 >> the file system or swap.  How do you ensure that a second process Q
 >> cannot interfere by e.g. attempting to evict the frame while it is
 >> still being read in?
 
+This may not be handled properly.
+
 >> B8: Explain how you handle access to paged-out pages that occur
 >> during system calls.  Do you use page faults to bring in pages (as
 >> in user programs), or do you have a mechanism for "locking" frames
 >> into physical memory, or do you use some other design?  How do you
 >> gracefully handle attempted accesses to invalid virtual addresses?
+This may also not be handled properly. But right now they use page faults to bring in pages.
 
 ---- RATIONALE ----
 
@@ -160,6 +174,7 @@ checking the accessed
 >> possibility for deadlock but allows for high parallelism.  Explain
 >> where your design falls along this continuum and why you chose to
 >> design it this way.
+We have one lock for the frame structure and one lock each per frame. This is more similar to a reader-writers lock and seems to be a good balance of speed and parallelism.
 
 			 MEMORY MAPPED FILES
 			 ===================
@@ -167,14 +182,25 @@ checking the accessed
 ---- DATA STRUCTURES ----
 
 >> C1: Copy here the declaration of each new or changed `struct' or
->> `struct' member, global or static variable, `typedef', or
+>> `struct' member, global or static variable, `typedef`, or
 >> enumeration.  Identify the purpose of each in 25 words or less.
+
+struct mapped_file
+{
+  mapid_t mapping;
+  void *base_page;
+  unsigned num_pages;
+  struct list_elem elem;
+};
+
+This tracks a memory mapped file to facilitate getting the right pages.
 
 ---- ALGORITHMS ----
 
 >> C2: Describe how memory mapped files integrate into your virtual
 >> memory subsystem.  Explain how the page fault and eviction
 >> processes differ between swap pages and other pages.
+For memory mapped files the pages are written back to the file if they have been edited instead of to the swap.
 
 >> C3: Explain how you determine whether a new file mapping overlaps
 >> any existing segment.
